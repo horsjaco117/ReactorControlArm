@@ -23,6 +23,7 @@ void setup() {
   delay(100);
   Serial.flush();
   while (!Serial) { ; }
+  //while (!Serial1) { ; }
 
   // Configure the control input pin
   pinMode(CONTROL_PIN, INPUT);           // Use INPUT_PULLUP if your signal is open-drain / active-low
@@ -33,6 +34,8 @@ void setup() {
 
   float stepsPerSecond = TARGET_RPM * STEPS_PER_REVOLUTION / 60.0;
   stepper.setSpeed(stepsPerSecond);
+
+  stepper.setMinPulseWidth(5);
 
   Serial.println("Stepper ready – runs only when control pin is HIGH");
   Serial.print  ("Control pin: ");
