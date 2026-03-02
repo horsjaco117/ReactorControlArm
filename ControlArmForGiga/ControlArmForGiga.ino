@@ -1,13 +1,15 @@
 //Analog input variables
 int positionSetPin = A0;
 int positionReadPin = A1;
-int rotaryKnobPin1 = A2;
-int rotaryKnobPin2 = A3;
+int rotaryKnobReadPin1 = A2;
+int rotaryKnobReadPin2 = A3;
 
 //Digital input variables
 int scramPin = 22;
 int powerPin = 23;
 int electromagnetPin = 24;
+int forwardPin = 25;
+int backwardPin = 26;
 
 //Serial Variables to send
 int analogIn1 = 0;
@@ -31,15 +33,15 @@ void setup() {
 void loop() {
   //Define variable again---------------------------------
   uint8_t packet1 = 0;
-  uint8_t positionSet;
-  uint8_t positionRead;
-  uint8_t rotaryKnob1Read;
-  uint8_t rotaryKnob2Read;
+  uint8_t positionSet = 0;
+  uint8_t positionRead = 0;
+  uint8_t rotaryKnob1Read = 0;
+  uint8_t rotaryKnob2Read = 0;
   //Analog Inputs-----------------------------------------
-  positionSet= analogRead(positionSetPin);
+  positionSet = analogRead(positionSetPin);
   positionRead = analogRead(positionReadPin);
-  rotaryKnob1Read = analogRead(rotaryKnobPin1);
-  rotaryKnob2Read = analogRead(rotaryKnobPin2);
+  rotaryKnob1Read = analogRead(rotaryKnobReadPin1);
+  rotaryKnob2Read = analogRead(rotaryKnobReadPin2);
 
   //First digital packet----------------------------------
   bool scramActive = (digitalRead(scramPin) == LOW);
@@ -49,7 +51,7 @@ void loop() {
 
   if (scramActive) packet1 |= (1 << 0);
   if (powerActive) packet1 |= (1 << 1); 
-  if (magnetActive) packet1 |= (1<< 2);
+  if (magnetActive) packet1 |= (1 << 2);
   //6 more digital indicators available
 
   Serial1.flush();                  // Wait for any previous transmission to complete
@@ -61,9 +63,9 @@ void loop() {
   delay(1);
   Serial1.write(positionRead);
   delay(1);
-  Serial1.write(rotaryKnobPin1);
+  Serial1.write(rotaryKnob1Read);
   delay(1);
-  Serial1.write(rotaryKnobPin2);
+  Serial1.write(rotaryKnob2Read);
   delay(1);
 
   delay(100);                       // Slow down for easier scope/analyzer viewing
