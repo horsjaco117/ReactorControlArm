@@ -33,10 +33,10 @@ void setup() {
 void loop() {
   //Define variable again---------------------------------
   uint8_t packet1 = 0;
-  uint8_t positionSet = 0;
-  uint8_t positionRead = 0;
-  uint8_t rotaryKnob1Read = 0;
-  uint8_t rotaryKnob2Read = 0;
+  uint16_t positionSet = 0;
+  uint16_t positionRead = 0;
+  uint16_t rotaryKnob1Read = 0;
+  uint16_t rotaryKnob2Read = 0;
   //Analog Inputs-----------------------------------------
   positionSet = analogRead(positionSetPin);
   positionRead = analogRead(positionReadPin);
@@ -59,9 +59,21 @@ void loop() {
 
   Serial1.write(packet1);
   delay(1);
-  Serial1.write(positionSet);
+  Serial1.write(highByte(positionSet));
   delay(1);
-  Serial1.write(positionRead);
+  Serial1.write(lowByte(positionSet));
+  delay(1);
+  Serial1.write(highByte(positionRead));
+  delay(1);
+  Serial1.write(lowByte(positionRead));
+  delay(1);
+  Serial1.write(highByte(rotaryKnob1Read));
+  delay(1);
+  Serial1.write(lowByte(rotaryKnob1Read));
+  delay(1);
+  Serial1.write(highByte(rotaryKnob2Read));
+  delay(1);
+  Serial1.write(lowByte(rotaryKnob2Read));
   delay(1);
   Serial1.write(rotaryKnob1Read);
   delay(1);
