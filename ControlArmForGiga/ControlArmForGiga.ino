@@ -47,12 +47,18 @@ void loop() {
   bool scramActive = (digitalRead(scramPin) == LOW);
   bool powerActive = (digitalRead(powerPin) == LOW);
   bool magnetActive = (digitalRead(electromagnetPin) == LOW);
+  bool forwardActive = (digitalRead(forwardPin) == LOW);
+  bool backwardActive = (digitalRead(backwardPin) == LOW);
 
 
   if (scramActive) packet1 |= (1 << 0);
   if (powerActive) packet1 |= (1 << 1); 
   if (magnetActive) packet1 |= (1 << 2);
-  //6 more digital indicators available
+  if (forwardActive) packet1 |= (1 << 3);
+  if (backwardActive) packet1 |= (1 << 4);
+  //if (bit5) packet1 |= (1 << 5);
+  //if (bit6) packet1 |= (1 << 5);
+  //if (bit7) packet1 |= (1 << 5);
 
   Serial1.flush();                  // Wait for any previous transmission to complete
   Serial.println(positionSet);
@@ -74,11 +80,7 @@ void loop() {
   Serial1.write(highByte(rotaryKnob2Read));
   delay(1);
   Serial1.write(lowByte(rotaryKnob2Read));
-  delay(1);
-  Serial1.write(rotaryKnob1Read);
-  delay(1);
-  Serial1.write(rotaryKnob2Read);
-  delay(1);
+
 
   delay(100);                       // Slow down for easier scope/analyzer viewing
 }
