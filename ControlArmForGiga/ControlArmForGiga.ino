@@ -41,6 +41,7 @@ void setup() {
   pinMode(D28, INPUT);              //Tells the controller the min position has been reached
 
   //Digital input for PWM and stepper
+  pinMode(6,OUTPUT);
   pinMode(controlPin, INPUT);
   stepper.setMaxSpeed(12800.0);
   stepper.setAcceleration(6400.0);
@@ -102,23 +103,23 @@ void loop() {
   Serial.println(positionSet);
 
   Serial1.write(packet1);
-  delay(1);
+  //delay(1);
   Serial1.write(highByte(positionSet));
-  delay(1);
+  //delay(1);
   Serial1.write(lowByte(positionSet));
-  delay(1);
+  //delay(1);
   Serial1.write(highByte(positionRead));
-  delay(1);
+  //delay(1);
   Serial1.write(lowByte(positionRead));
-  delay(1);
+  //delay(1);
   Serial1.write(highByte(rotaryKnob1Read));
-  delay(1);
+  //delay(1);
   Serial1.write(lowByte(rotaryKnob1Read));
-  delay(1);
+  //delay(1);
   Serial1.write(highByte(rotaryKnob2Read));
-  delay(1);
+  //delay(1);
   Serial1.write(lowByte(rotaryKnob2Read));
 
 
-  delay(100);                       // Slow down for easier scope/analyzer viewing
+ // delay(100);                       // Slow down for easier scope/analyzer viewing
 }
