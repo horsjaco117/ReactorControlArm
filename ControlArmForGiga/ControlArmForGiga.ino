@@ -60,13 +60,13 @@ void loop() {
   bool minPositionActive = (digitalRead(rodPositionMinPin) == LOW);
 
     //Packet Setup---------------------------------------------
-  if (scramActive) packet1 |= (1 << 0);         //1st bit 
-  if (powerActive) packet1 |= (1 << 1); 
-  if (magnetActive) packet1 |= (1 << 2);
-  if (forwardActive) packet1 |= (1 << 3);
-  if (backwardActive) packet1 |= (1 << 4);
-  if (maxPositionActive) packet1 |= (1 << 5);
-  if (minPositionActive) packet1 |= (1 << 6);
+  if (scramActive) packet1 |= (1 << 0);         //1st bit activates SCRAM condition
+  if (powerActive) packet1 |= (1 << 1);         //2nd bit activates power
+  if (magnetActive) packet1 |= (1 << 2);        //3rd bit activates the electromagnet
+  if (forwardActive) packet1 |= (1 << 3);       //4th bit activates the forward action of the stepper
+  if (backwardActive) packet1 |= (1 << 4);      //5th bit activates the backward action of the stepper
+  if (maxPositionActive) packet1 |= (1 << 5);   //6th bit activates the pause movement at max range
+  if (minPositionActive) packet1 |= (1 << 6);   //7th bit activates the pause movement at min range
   //if (bit7) packet1 |= (1 << 7);
 
   Serial1.flush();                  // Wait for any previous transmission to complete
