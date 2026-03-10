@@ -1,10 +1,12 @@
-//Analog input variables
+#include <AccelStepper.h>
+
+//Analog input variables---------------------------------------------------------
 int positionSetPin = A0;      //The position set voltage wire needs to go to A0
 int positionReadPin = A1;     //The position read voltage wire needs to go to A1
 int rotaryKnobReadPin1 = A2;  //The rotaryknob1 voltage wire needs to go to A2
 int rotaryKnobReadPin2 = A3;  //The rotaryknob2 voltage wire needs to go to A3
 
-//Digital input variables
+//Digital input variables-------------------------------------------------------
 int scramPin = 22;          //Wire the SCRAM button to this pin
 int powerPin = 23;          //Wire the software power button to this pin
 int electromagnetPin = 24;  //Wire the button for the electromagnet to this pin
@@ -12,6 +14,17 @@ int forwardPin = 25;        //Wire the part of switch to move forward to this pi
 int backwardPin = 26;       //Wire the part of switch to move backward to this pin
 int rodPositionMinPin = 27; //Wire the min rod position to this pin
 int rodPositionMaxPin = 28; //Wire the max rod position to this pin
+
+//Digital PWM input/output variable
+const uint8_t controlPin = 7;         //Digital input pin (High = run, Low = stop)
+const uint8_t stepPin = 6;            //Outputs the PWM signal
+const uint8_t dirPin = 5;             //
+const uint8_t motorInterfaceType = 1; //
+
+//Variables for movement adjustments on the stepper
+const float targetRPM = 3.0;
+const float stepsPerRevolution = 6400.0;
+AccelStepper stepper = AccelStepper(motorInterfaceType, stepPin, dirPin);
 
 //Serial Variables to send
 int analogIn1 = 0;          //Temporary analog in position variable. Can be discarded
@@ -27,6 +40,14 @@ void setup() {
   pinMode(D27, INPUT);              //Tells the controller max position has been reached
   pinMode(D28, INPUT);              //Tells the controller the min position has been reached
 
+  //Digital input for PWM and stepper
+  pinMode(controlPin, INPUT);
+  stepper.setMaxSpeed(12800.0);
+  stepper.setAcceleration(6400.0);
+  float stepsPerSecond = targetRPM * stepsPerRevolution / 60.0;
+  stepper.setSpeed(stepsPerSecond);
+  stepper.setMinPulseWidth(5);
+
   //Analog input setup-----------------------------------
   pinMode(A0,INPUT);                //Analog position for the control rod
   pinMode(A1, INPUT);               //Analog voltage indicating the position of the rod
@@ -38,6 +59,13 @@ void setup() {
 }
 
 void loop() {
+  //Start by checking if the motor should be running
+  bool shouldRun = (digitalRead(controlPin) == HIGH);
+
+  if(shouldRun) {
+    stepper.runSpeed();
+  }
+
   //Define variable again---------------------------------
   uint8_t packet1 = 0;              //Packet that sends the digital bytes (See packet setup below) 8 bit data
   uint16_t positionSet = 0;         //Packet that sends where to set the position voltage set as 16 bits the controller only sends 10 bits
@@ -67,6 +95,7 @@ void loop() {
   if (backwardActive) packet1 |= (1 << 4);      //5th bit activates the backward action of the stepper
   if (maxPositionActive) packet1 |= (1 << 5);   //6th bit activates the pause movement at max range
   if (minPositionActive) packet1 |= (1 << 6);   //7th bit activates the pause movement at min range
+  if (shouldRun) packet1 |= (1<< 7);            //8th bit is a debug variable right now to see if PWM should output
   //if (bit7) packet1 |= (1 << 7);
 
   Serial1.flush();                  // Wait for any previous transmission to complete
