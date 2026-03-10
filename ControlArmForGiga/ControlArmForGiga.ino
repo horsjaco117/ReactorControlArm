@@ -10,6 +10,8 @@ int powerPin = 23;
 int electromagnetPin = 24;
 int forwardPin = 25;
 int backwardPin = 26;
+int rodPositionMinPin = 27;
+int rodPositionMaxPin = 28;
 
 //Serial Variables to send
 int analogIn1 = 0;
@@ -20,6 +22,11 @@ void setup() {
   pinMode(D22, INPUT);              //Scram pin
   pinMode(D23, INPUT);              //Power pin
   pinMode(D24, INPUT);              //Electromagnet pin
+  pinMode(D25, INPUT);
+  pinMode(D26, INPUT);
+  pinMode(D27, INPUT);
+  pinMode(D28, INPUT);
+
   //Analog input setup-----------------------------------
   pinMode(A0,INPUT);                //Analog position for the control rod
   pinMode(A1, INPUT);
@@ -49,6 +56,8 @@ void loop() {
   bool magnetActive = (digitalRead(electromagnetPin) == LOW);
   bool forwardActive = (digitalRead(forwardPin) == LOW);
   bool backwardActive = (digitalRead(backwardPin) == LOW);
+  bool maxPositionActive = (digitalRead(rodPositionMaxPin) == LOW);
+  bool minPositionActive = (digitalRead(rodPositionMinPin) == LOW);
 
 
   if (scramActive) packet1 |= (1 << 0);
@@ -56,9 +65,9 @@ void loop() {
   if (magnetActive) packet1 |= (1 << 2);
   if (forwardActive) packet1 |= (1 << 3);
   if (backwardActive) packet1 |= (1 << 4);
-  //if (bit5) packet1 |= (1 << 5);
-  //if (bit6) packet1 |= (1 << 5);
-  //if (bit7) packet1 |= (1 << 5);
+  if (maxPositionActive) packet1 |= (1 << 5);
+  if (minPositionActive) packet1 |= (1 << 6);
+  //if (bit7) packet1 |= (1 << 7);
 
   Serial1.flush();                  // Wait for any previous transmission to complete
   Serial.println(positionSet);
