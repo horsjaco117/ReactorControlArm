@@ -100,10 +100,10 @@ void loop() {
   //if (bit7) packet1 |= (1 << 7);
 
   Serial.flush();                  // Wait for any previous transmission to complete
-  Serial.println(positionSet);
-
+  //Serial.println(positionSet);
+  //Serial.write(positionSet);
   Serial.write(packet1);
-  //delay(1);
+  delay(1);
   Serial.write(highByte(positionSet));
   //delay(1);
   Serial.write(lowByte(positionSet));
@@ -121,5 +121,5 @@ void loop() {
   Serial.write(lowByte(rotaryKnob2Read));
 
 
- // delay(100);                       // Slow this down for easier viewing of serial data
+ delay(100);                       // Slow this down for easier viewing of serial data
 }

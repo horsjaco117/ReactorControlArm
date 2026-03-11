@@ -30,6 +30,10 @@ AccelStepper stepper = AccelStepper(motorInterfaceType, stepPin, dirPin);
 int analogIn1 = 0;          //Temporary analog in position variable. Can be discarded
 int digitalInputs1 = 0;     //DO NOT DELETE. This sends the current readings for all the digital inputs. 
 
+//Serial variables
+unsigned long lastTxTime = 0;
+const unsigned long txIntervalMs = 100;
+
 void setup() {
   //Digital input setup------------------------------------
   pinMode(D22, INPUT);              //Scram pin
@@ -99,27 +103,28 @@ void loop() {
   if (shouldRun) packet1 |= (1<< 7);            //8th bit is a debug variable right now to see if PWM should output
   //if (bit7) packet1 |= (1 << 7);
 
-  Serial1.flush();                  // Wait for any previous transmission to complete
+  //Test serial code 
+  unsigned long now = millis();
+  if (now - lastTxTime >= txIntervalMs) {
+    lastTxTime = now;
+
+
+  //Serial1.flush();                  // Wait for any previous transmission to complete
   Serial.println(positionSet);
 
   Serial1.write(packet1);
-  //delay(1);
   Serial1.write(highByte(positionSet));
-  //delay(1);
   Serial1.write(lowByte(positionSet));
-  //delay(1);
   Serial1.write(highByte(positionRead));
-  //delay(1);
   Serial1.write(lowByte(positionRead));
-  //delay(1);
   Serial1.write(highByte(rotaryKnob1Read));
-  //delay(1);
   Serial1.write(lowByte(rotaryKnob1Read));
-  //delay(1);
   Serial1.write(highByte(rotaryKnob2Read));
-  //delay(1);
   Serial1.write(lowByte(rotaryKnob2Read));
 
 
- // delay(100);                       // Slow down for easier scope/analyzer viewing
+  //delay(100);                       // Slow down for easier scope/analyzer viewing
+    // if (/* your shouldRun condition */) {
+    // stepper.runSpeed();
+  }
 }
