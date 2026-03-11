@@ -22,7 +22,7 @@ const uint8_t dirPin = 5;             //
 const uint8_t motorInterfaceType = 1; //
 
 //Variables for movement adjustments on the stepper
-const float targetRPM = 3.0;
+//const float targetRPM = 24.0;
 const float stepsPerRevolution = 6400.0;
 AccelStepper stepper = AccelStepper(motorInterfaceType, stepPin, dirPin);
 
@@ -32,7 +32,7 @@ int digitalInputs1 = 0;     //DO NOT DELETE. This sends the current readings for
 
 //Serial variables
 unsigned long lastTxTime = 0;
-const unsigned long txIntervalMs = 100;
+const unsigned long txIntervalMs = 200;
 
 void setup() {
   //Digital input setup------------------------------------
@@ -47,11 +47,11 @@ void setup() {
   //Digital input for PWM and stepper
   pinMode(6,OUTPUT);
   pinMode(controlPin, INPUT);
-  stepper.setMaxSpeed(12800.0);
-  stepper.setAcceleration(6400.0);
-  float stepsPerSecond = targetRPM * stepsPerRevolution / 60.0;
-  stepper.setSpeed(stepsPerSecond);
-  stepper.setMinPulseWidth(5);
+  // stepper.setMaxSpeed(12800.0);
+  // stepper.setAcceleration(6400.0);
+  // float stepsPerSecond = targetRPM * stepsPerRevolution / 60.0;
+  // stepper.setSpeed(stepsPerSecond);
+  // stepper.setMinPulseWidth(5);
 
   //Analog input setup-----------------------------------
   pinMode(A0,INPUT);                //Analog position for the control rod
@@ -107,6 +107,16 @@ void loop() {
   unsigned long now = millis();
   if (now - lastTxTime >= txIntervalMs) {
     lastTxTime = now;
+
+  float targetRPM = positionSet / 50;
+  //Variable speed test
+  //float positionSet_normalized = positionSet_int / 1023.0f;
+  stepper.setMaxSpeed(12800.0);
+  stepper.setAcceleration(6400.0);
+  float stepsPerSecond = targetRPM * stepsPerRevolution / 50.0;
+  stepper.setSpeed(stepsPerSecond);
+  stepper.setMinPulseWidth(5);
+
 
 
   //Serial1.flush();                  // Wait for any previous transmission to complete
