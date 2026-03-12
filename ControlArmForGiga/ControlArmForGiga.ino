@@ -21,34 +21,28 @@ int rodPositionMaxPin = 28; //Wire the max rod position to this pin
 int speedPin = 29;          //Wire the switch that determines speed to this pin
 
 //PWM input
-//const uint8_t controlPin = 7;         //Digital input pin (High = run, Low = stop)
-bool controlPin = false; 
+bool controlPin = false; //Controls were tied to pin 7 but now run off of a variable
 
 //Digital Output Variables--------------------------------------
 
 //PWM motor outputs
 const uint8_t stepPin = 6;            //Outputs the PWM signal
-const uint8_t dirPin = 5;             //
-const uint8_t _dirPin = 4;
-const uint8_t motorInterfaceType = 1; //
+const uint8_t dirPin = 5;             //Ties to the positive direction pin of the stepper driver
+const uint8_t _dirPin = 4;            //Ties to the negative direction pin of the stepper driver
+const uint8_t motorInterfaceType = 1; //Proprietary motor type for the header file
 
 
 
 //Variables for movement adjustments on the stepper
-//const float targetRPM = 24.0;
-const float stepsPerRevolution = 6400.0;
+const float stepsPerRevolution = 6400.0;    //This is tied to the stepper driver switch settings
 AccelStepper stepper = AccelStepper(motorInterfaceType, stepPin, dirPin);
 
-//Serial Variables to send
-int analogIn1 = 0;          //Temporary analog in position variable. Can be discarded
-int digitalInputs1 = 0;     //DO NOT DELETE. This sends the current readings for all the digital inputs. 
-
 //Serial variables
-unsigned long lastTxTime = 0;
+unsigned long lastTxTime = 0;             //Two transmission variable for more stable sending
 const unsigned long txIntervalMs = 200;
 
 void setup() {
-  //Digital input setup------------------------------------
+  //Digital input setup--------------------------------------------------------------------------
 
   //Packet 1
   pinMode(D22, INPUT);              //Scram pin
@@ -68,7 +62,7 @@ void setup() {
   pinMode(6,OUTPUT);
 
   
-  //Analog input setup-----------------------------------
+  //Analog input setup---------------------------------------------------------------------------------
   pinMode(A0,INPUT);                //Analog position for the control rod
   pinMode(A1, INPUT);               //Analog voltage indicating the position of the rod
   pinMode(A2, INPUT);               //Analog voltage indicating position of the rotary knob
@@ -80,14 +74,12 @@ void setup() {
   stepper.setMinPulseWidth(5);
 
   //Serial setup------------------------------------------
-  Serial.begin(9600);               // USB debugging
-  Serial1.begin(9600, SERIAL_8N1);  // TX1 output 1, 9600 baude, 8 bit packets, no parity bit
+ // Serial.begin(9600);               // USB debugging
+  Serial1.begin(115200, SERIAL_8N1);  // TX1 output 1, 9600 baude, 8 bit packets, no parity bit
 }
 
 void loop() {
   //Start by checking if the motor should be running
-  //bool shouldRun = (controlpin = true);
-
   // This must be called frequently for smooth stepping
   if(controlPin) {
     stepper.runSpeed();
@@ -109,13 +101,13 @@ void loop() {
 
   // Update speed only when the setpoint changes (with small hysteresis)
   static int lastPositionSet = -1;
-  const int hysteresis = 4;
+  const int hysteresis = 4;   //hysteresis accounts for the LSB switching all the time
 
-  if (abs((int)positionSet - lastPositionSet) >= hysteresis) {
+  if (abs((int)positionSet - lastPositionSet) >= hysteresis) {    //Provides smooth stepping and RPM control
     lastPositionSet = positionSet;
 
     float targetRPM = positionSet / 50;
-    float stepsPerSecond = targetRPM * stepsPerRevolution / 50.0;
+    float stepsPerSecond = targetRPM * stepsPerRevolution / 50.0;   //Target RPM in charge of changing speed
     stepper.setSpeed(stepsPerSecond);
   }
 
@@ -140,7 +132,7 @@ void loop() {
     controlPin = true;
   }
   else{
-    controlPin = false;
+    controlPin = false;             //Ensures the motor stops with no input
   }
 
   //Second digital packet----------------------------------
@@ -169,17 +161,16 @@ void loop() {
     //Serial1.flush();                  // Wait for any previous transmission to complete
     Serial.println(positionSet);
 
-    Serial1.write(packet1);
-    Serial1.write(packet2);
-    Serial1.write(highByte(positionSet));
+    Serial1.write(0b00100100);                //HEX 24 only for triggering on the oscope
+    Serial1.write(packet1);                   //1st set of digital inputs
+    Serial1.write(packet2);                   //2nd set of digital inputs
+    Serial1.write(highByte(positionSet));     //Sets position of the control rod
     Serial1.write(lowByte(positionSet));
-    Serial1.write(highByte(positionRead));
+    Serial1.write(highByte(positionRead));    //Reads the position of the control rod
     Serial1.write(lowByte(positionRead));
-    Serial1.write(highByte(rotaryKnob1Read));
+    Serial1.write(highByte(rotaryKnob1Read)); //For the knob on the control panel
     Serial1.write(lowByte(rotaryKnob1Read));
-    Serial1.write(highByte(rotaryKnob2Read));
+    Serial1.write(highByte(rotaryKnob2Read)); //For the other knob of the control panel
     Serial1.write(lowByte(rotaryKnob2Read));
-
-    //delay(100);                       // Slow down for easier scope/analyzer viewing
   }
 }
