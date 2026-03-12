@@ -6,7 +6,9 @@ int positionReadPin = A1;     //The position read voltage wire needs to go to A1
 int rotaryKnobReadPin1 = A2;  //The rotaryknob1 voltage wire needs to go to A2
 int rotaryKnobReadPin2 = A3;  //The rotaryknob2 voltage wire needs to go to A3
 
-//Digital input variables-------------------------------------------------------
+//Digital input variables -------------------------------------------------------
+
+//packet 1
 int scramPin = 22;          //Wire the SCRAM button to this pin
 int powerPin = 23;          //Wire the software power button to this pin
 int electromagnetPin = 24;  //Wire the button for the electromagnet to this pin
@@ -14,6 +16,9 @@ int forwardPin = 25;        //Wire the part of switch to move forward to this pi
 int backwardPin = 26;       //Wire the part of switch to move backward to this pin
 int rodPositionMinPin = 27; //Wire the min rod position to this pin
 int rodPositionMaxPin = 28; //Wire the max rod position to this pin
+
+//packet 2
+int speedPin = 29;          //Wire the switch that determines speed to this pin
 
 //Digital PWM input/output variable
 const uint8_t controlPin = 7;         //Digital input pin (High = run, Low = stop)
@@ -32,10 +37,12 @@ int digitalInputs1 = 0;     //DO NOT DELETE. This sends the current readings for
 
 //Serial variables
 unsigned long lastTxTime = 0;
-const unsigned long txIntervalMs = 200;
+const unsigned long txIntervalMs = 75;
 
 void setup() {
   //Digital input setup------------------------------------
+
+  //Packet 1
   pinMode(D22, INPUT);              //Scram pin
   pinMode(D23, INPUT);              //Power pin
   pinMode(D24, INPUT);              //Electromagnet pin
@@ -43,6 +50,9 @@ void setup() {
   pinMode(D26, INPUT);              //Tells arm to move backward
   pinMode(D27, INPUT);              //Tells the controller max position has been reached
   pinMode(D28, INPUT);              //Tells the controller the min position has been reached
+
+  //Packet 2
+  pinMode(D29, INPUT);              //Tells the controller desired speed option
 
   //Digital input for PWM and stepper
   pinMode(6,OUTPUT);
@@ -73,6 +83,7 @@ void loop() {
 
   //Define variable again---------------------------------
   uint8_t packet1 = 0;              //Packet that sends the digital bytes (See packet setup below) 8 bit data
+  uint8_t packet2 = 0;
   uint16_t positionSet = 0;         //Packet that sends where to set the position voltage set as 16 bits the controller only sends 10 bits
   uint16_t positionRead = 0;        //Packet that sends where the position voltage is. Set as 16 bits only sends 10 bits
   uint16_t rotaryKnob1Read = 0;     //Packet that sends the 1st rotary knob voltage. Set as 16 bits only sends 10 bits
@@ -92,7 +103,12 @@ void loop() {
   bool maxPositionActive = (digitalRead(rodPositionMaxPin) == LOW);
   bool minPositionActive = (digitalRead(rodPositionMinPin) == LOW);
 
-    //Packet Setup---------------------------------------------
+  //Second digital packet----------------------------------
+  bool fast_Slow = (digitalRead(speedPin) == LOW);
+  //bool exampleFunction = (digtialRead(examplePin) == Low);
+
+
+    //Packet1 Setup---------------------------------------------
   if (scramActive) packet1 |= (1 << 0);         //1st bit activates SCRAM condition
   if (powerActive) packet1 |= (1 << 1);         //2nd bit activates power
   if (magnetActive) packet1 |= (1 << 2);        //3rd bit activates the electromagnet
@@ -101,7 +117,10 @@ void loop() {
   if (maxPositionActive) packet1 |= (1 << 5);   //6th bit activates the pause movement at max range
   if (minPositionActive) packet1 |= (1 << 6);   //7th bit activates the pause movement at min range
   if (shouldRun) packet1 |= (1<< 7);            //8th bit is a debug variable right now to see if PWM should output
-  //if (bit7) packet1 |= (1 << 7);
+
+  //Packet2 Setup
+  if (fast_Slow) packet2 |= (1 << 0);
+  //if (bitExample) packet1 |= (1 << bit#);
 
   //Test serial code 
   unsigned long now = millis();
@@ -123,6 +142,7 @@ void loop() {
   Serial.println(positionSet);
 
   Serial1.write(packet1);
+  Serial1.write(packet2);
   Serial1.write(highByte(positionSet));
   Serial1.write(lowByte(positionSet));
   Serial1.write(highByte(positionRead));
