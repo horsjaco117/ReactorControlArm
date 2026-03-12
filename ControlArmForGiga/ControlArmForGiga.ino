@@ -20,11 +20,18 @@ int rodPositionMaxPin = 28; //Wire the max rod position to this pin
 //packet 2
 int speedPin = 29;          //Wire the switch that determines speed to this pin
 
-//Digital PWM input/output variable
+//PWM input
 const uint8_t controlPin = 7;         //Digital input pin (High = run, Low = stop)
+
+//Digital Output Variables--------------------------------------
+
+//PWM motor outputs
 const uint8_t stepPin = 6;            //Outputs the PWM signal
 const uint8_t dirPin = 5;             //
+const uint8_t _dirPin = 4;
 const uint8_t motorInterfaceType = 1; //
+
+
 
 //Variables for movement adjustments on the stepper
 //const float targetRPM = 24.0;
@@ -37,7 +44,7 @@ int digitalInputs1 = 0;     //DO NOT DELETE. This sends the current readings for
 
 //Serial variables
 unsigned long lastTxTime = 0;
-const unsigned long txIntervalMs = 75;
+const unsigned long txIntervalMs = 200;
 
 void setup() {
   //Digital input setup------------------------------------
@@ -57,17 +64,18 @@ void setup() {
   //Digital input for PWM and stepper
   pinMode(6,OUTPUT);
   pinMode(controlPin, INPUT);
-  // stepper.setMaxSpeed(12800.0);
-  // stepper.setAcceleration(6400.0);
-  // float stepsPerSecond = targetRPM * stepsPerRevolution / 60.0;
-  // stepper.setSpeed(stepsPerSecond);
-  // stepper.setMinPulseWidth(5);
-
+  
   //Analog input setup-----------------------------------
   pinMode(A0,INPUT);                //Analog position for the control rod
   pinMode(A1, INPUT);               //Analog voltage indicating the position of the rod
   pinMode(A2, INPUT);               //Analog voltage indicating position of the rotary knob
   pinMode(A3, INPUT);               //Analog voltage indicating position of the second rotary knob
+
+  // Stepper configuration (moved here - only needs to run once)
+  stepper.setMaxSpeed(12800.0);
+  stepper.setAcceleration(6400.0);
+  stepper.setMinPulseWidth(5);
+
   //Serial setup------------------------------------------
   Serial.begin(9600);               // USB debugging
   Serial1.begin(9600, SERIAL_8N1);  // TX1 output 1, 9600 baude, 8 bit packets, no parity bit
@@ -77,6 +85,7 @@ void loop() {
   //Start by checking if the motor should be running
   bool shouldRun = (digitalRead(controlPin) == HIGH);
 
+  // This must be called frequently for smooth stepping
   if(shouldRun) {
     stepper.runSpeed();
   }
@@ -88,11 +97,24 @@ void loop() {
   uint16_t positionRead = 0;        //Packet that sends where the position voltage is. Set as 16 bits only sends 10 bits
   uint16_t rotaryKnob1Read = 0;     //Packet that sends the 1st rotary knob voltage. Set as 16 bits only sends 10 bits
   uint16_t rotaryKnob2Read = 0;     //Packet that sends the 2nd rotary knob voltage. Set as 16 bits only sends 10 bits
+
   //Analog Inputs-----------------------------------------
   positionSet = analogRead(positionSetPin);           //Assigns the digital value of the position set to variable. Variable is what sends through serial
   positionRead = analogRead(positionReadPin);         //Assigns the digital value of the Position read to variable. Variable is what sends through serial
   rotaryKnob1Read = analogRead(rotaryKnobReadPin1);   //Assigns the digital value of the rotaryKnob1 read to variable. Variable is what sends through serial
   rotaryKnob2Read = analogRead(rotaryKnobReadPin2);   //Assigns the digital value of the rotaryKnob2 read to variable. Variable is what sends through serial
+
+  // Update speed only when the setpoint changes (with small hysteresis)
+  static int lastPositionSet = -1;
+  const int hysteresis = 4;
+
+  if (abs((int)positionSet - lastPositionSet) >= hysteresis) {
+    lastPositionSet = positionSet;
+
+    float targetRPM = positionSet / 50;
+    float stepsPerSecond = targetRPM * stepsPerRevolution / 50.0;
+    stepper.setSpeed(stepsPerSecond);
+  }
 
   //First digital packet----------------------------------
   bool scramActive = (digitalRead(scramPin) == LOW);                 //This section of code tells pins whether to activate at 5v(high) or .7V(low)
@@ -103,12 +125,21 @@ void loop() {
   bool maxPositionActive = (digitalRead(rodPositionMaxPin) == LOW);
   bool minPositionActive = (digitalRead(rodPositionMinPin) == LOW);
 
+    //Direction Control test code-----------------------
+  if (forwardActive) {
+    digitalWrite(dirPin, LOW);      // Forward = dir LOW (0)
+    digitalWrite(_dirPin, HIGH);
+  }
+  else if (backwardActive) {
+    digitalWrite(dirPin, HIGH);     // Backward = dir HIGH (1)
+    digitalWrite(_dirPin, LOW);
+  }
+
   //Second digital packet----------------------------------
   bool fast_Slow = (digitalRead(speedPin) == LOW);
   //bool exampleFunction = (digtialRead(examplePin) == Low);
 
-
-    //Packet1 Setup---------------------------------------------
+  //Packet1 Setup---------------------------------------------
   if (scramActive) packet1 |= (1 << 0);         //1st bit activates SCRAM condition
   if (powerActive) packet1 |= (1 << 1);         //2nd bit activates power
   if (magnetActive) packet1 |= (1 << 2);        //3rd bit activates the electromagnet
@@ -127,34 +158,20 @@ void loop() {
   if (now - lastTxTime >= txIntervalMs) {
     lastTxTime = now;
 
-  float targetRPM = positionSet / 50;
-  //Variable speed test
-  //float positionSet_normalized = positionSet_int / 1023.0f;
-  stepper.setMaxSpeed(12800.0);
-  stepper.setAcceleration(6400.0);
-  float stepsPerSecond = targetRPM * stepsPerRevolution / 50.0;
-  stepper.setSpeed(stepsPerSecond);
-  stepper.setMinPulseWidth(5);
+    //Serial1.flush();                  // Wait for any previous transmission to complete
+    Serial.println(positionSet);
 
+    Serial1.write(packet1);
+    Serial1.write(packet2);
+    Serial1.write(highByte(positionSet));
+    Serial1.write(lowByte(positionSet));
+    Serial1.write(highByte(positionRead));
+    Serial1.write(lowByte(positionRead));
+    Serial1.write(highByte(rotaryKnob1Read));
+    Serial1.write(lowByte(rotaryKnob1Read));
+    Serial1.write(highByte(rotaryKnob2Read));
+    Serial1.write(lowByte(rotaryKnob2Read));
 
-
-  //Serial1.flush();                  // Wait for any previous transmission to complete
-  Serial.println(positionSet);
-
-  Serial1.write(packet1);
-  Serial1.write(packet2);
-  Serial1.write(highByte(positionSet));
-  Serial1.write(lowByte(positionSet));
-  Serial1.write(highByte(positionRead));
-  Serial1.write(lowByte(positionRead));
-  Serial1.write(highByte(rotaryKnob1Read));
-  Serial1.write(lowByte(rotaryKnob1Read));
-  Serial1.write(highByte(rotaryKnob2Read));
-  Serial1.write(lowByte(rotaryKnob2Read));
-
-
-  //delay(100);                       // Slow down for easier scope/analyzer viewing
-    // if (/* your shouldRun condition */) {
-    // stepper.runSpeed();
+    //delay(100);                       // Slow down for easier scope/analyzer viewing
   }
 }
