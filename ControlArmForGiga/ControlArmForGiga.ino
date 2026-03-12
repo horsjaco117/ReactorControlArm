@@ -21,7 +21,8 @@ int rodPositionMaxPin = 28; //Wire the max rod position to this pin
 int speedPin = 29;          //Wire the switch that determines speed to this pin
 
 //PWM input
-const uint8_t controlPin = 7;         //Digital input pin (High = run, Low = stop)
+//const uint8_t controlPin = 7;         //Digital input pin (High = run, Low = stop)
+bool controlPin = false; 
 
 //Digital Output Variables--------------------------------------
 
@@ -65,7 +66,7 @@ void setup() {
   pinMode(4, OUTPUT);
   pinMode(5, OUTPUT);
   pinMode(6,OUTPUT);
-  pinMode(controlPin, INPUT);
+
   
   //Analog input setup-----------------------------------
   pinMode(A0,INPUT);                //Analog position for the control rod
@@ -85,10 +86,10 @@ void setup() {
 
 void loop() {
   //Start by checking if the motor should be running
-  bool shouldRun = (digitalRead(controlPin) == HIGH);
+  //bool shouldRun = (controlpin = true);
 
   // This must be called frequently for smooth stepping
-  if(shouldRun) {
+  if(controlPin) {
     stepper.runSpeed();
   }
 
@@ -131,10 +132,15 @@ void loop() {
   if (forwardActive) {
     digitalWrite(dirPin, LOW);      // Forward = dir LOW (0)
     digitalWrite(_dirPin, HIGH);
+    controlPin = true;
   }
   else if (backwardActive) {
     digitalWrite(dirPin, HIGH);     // Backward = dir HIGH (1)
     digitalWrite(_dirPin, LOW);
+    controlPin = true;
+  }
+  else{
+    controlPin = false;
   }
 
   //Second digital packet----------------------------------
@@ -149,7 +155,7 @@ void loop() {
   if (backwardActive) packet1 |= (1 << 4);      //5th bit activates the backward action of the stepper
   if (maxPositionActive) packet1 |= (1 << 5);   //6th bit activates the pause movement at max range
   if (minPositionActive) packet1 |= (1 << 6);   //7th bit activates the pause movement at min range
-  if (shouldRun) packet1 |= (1<< 7);            //8th bit is a debug variable right now to see if PWM should output
+  if (controlPin) packet1 |= (1<< 7);            //8th bit is a debug variable right now to see if PWM should output
 
   //Packet2 Setup
   if (fast_Slow) packet2 |= (1 << 0);
