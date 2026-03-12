@@ -62,6 +62,8 @@ void setup() {
   pinMode(D29, INPUT);              //Tells the controller desired speed option
 
   //Digital input for PWM and stepper
+  pinMode(4, OUTPUT);
+  pinMode(5, OUTPUT);
   pinMode(6,OUTPUT);
   pinMode(controlPin, INPUT);
   
