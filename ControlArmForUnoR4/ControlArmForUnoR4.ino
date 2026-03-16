@@ -9,16 +9,16 @@ int rotaryKnobReadPin2 = A3;  //The rotaryknob2 voltage wire needs to go to A3
 //Digital input variables -------------------------------------------------------
 
 //packet 1
-int scramPin = 22;          //Wire the SCRAM button to this pin
-int powerPin = 23;          //Wire the software power button to this pin
-int electromagnetPin = 24;  //Wire the button for the electromagnet to this pin
-int forwardPin = 25;        //Wire the part of switch to move forward to this pin
-int backwardPin = 26;       //Wire the part of switch to move backward to this pin
-int rodPositionMinPin = 27; //Wire the min rod position to this pin
-int rodPositionMaxPin = 28; //Wire the max rod position to this pin
+int scramPin = 13;          //Wire the SCRAM button to this pin
+int powerPin = 12;          //Wire the software power button to this pin
+int electromagnetPin = 11;  //Wire the button for the electromagnet to this pin
+int forwardPin = 10;        //Wire the part of switch to move forward to this pin
+int backwardPin = 9;       //Wire the part of switch to move backward to this pin
+int rodPositionMinPin = 8; //Wire the min rod position to this pin
+int rodPositionMaxPin = 7; //Wire the max rod position to this pin
 
 //packet 2
-int speedPin = 29;          //Wire the switch that determines speed to this pin
+int speedPin = 6;          //Wire the switch that determines speed to this pin
 
 //PWM input
 bool controlPin = false; //Controls were tied to pin 7 but now run off of a variable
@@ -26,9 +26,9 @@ bool controlPin = false; //Controls were tied to pin 7 but now run off of a vari
 //Digital Output Variables--------------------------------------
 
 //PWM motor outputs
-const uint8_t stepPin = 6;            //Outputs the PWM signal
-const uint8_t dirPin = 5;             //Ties to the positive direction pin of the stepper driver
-const uint8_t _dirPin = 4;            //Ties to the negative direction pin of the stepper driver
+const uint8_t stepPin = 4;            //Outputs the PWM signal
+const uint8_t dirPin = 3;             //Ties to the positive direction pin of the stepper driver
+const uint8_t _dirPin = 2;            //Ties to the negative direction pin of the stepper driver
 const uint8_t motorInterfaceType = 1; //Proprietary motor type for the header file
 
 
@@ -45,21 +45,21 @@ void setup() {
   //Digital input setup--------------------------------------------------------------------------
 
   //Packet 1
-  pinMode(D22, INPUT);              //Scram pin
-  pinMode(D23, INPUT);              //Power pin
-  pinMode(D24, INPUT);              //Electromagnet pin
-  pinMode(D25, INPUT);              //Tells Arm to move forward
-  pinMode(D26, INPUT);              //Tells arm to move backward
-  pinMode(D27, INPUT);              //Tells the controller max position has been reached
-  pinMode(D28, INPUT);              //Tells the controller the min position has been reached
+  pinMode(13, INPUT);              //Scram pin
+  pinMode(12, INPUT);              //Power pin
+  pinMode(11, INPUT);              //Electromagnet pin
+  pinMode(10, INPUT);              //Tells Arm to move forward
+  pinMode(9, INPUT);              //Tells arm to move backward
+  pinMode(8, INPUT);              //Tells the controller max position has been reached
+  pinMode(7, INPUT);              //Tells the controller the min position has been reached
 
   //Packet 2
-  pinMode(D29, INPUT);              //Tells the controller desired speed option
+  pinMode(6, INPUT);              //Tells the controller desired speed option
 
   //Digital input for PWM and stepper
+  pinMode(3, OUTPUT);
   pinMode(4, OUTPUT);
-  pinMode(5, OUTPUT);
-  pinMode(6,OUTPUT);
+  pinMode(5,OUTPUT);
 
   
   //Analog input setup---------------------------------------------------------------------------------
@@ -162,15 +162,15 @@ void loop() {
     //Serial.println(positionSet);
 
     Serial1.write(0b00100100);                //HEX 24 only for triggering on the oscope
-  //   Serial1.write(packet1);                   //1st set of digital inputs
-  //   Serial1.write(packet2);                   //2nd set of digital inputs
-  //   Serial1.write(highByte(positionSet));     //Sets position of the control rod
-  //   Serial1.write(lowByte(positionSet));
-  //   Serial1.write(highByte(positionRead));    //Reads the position of the control rod
-  //   Serial1.write(lowByte(positionRead));
-  //   Serial1.write(highByte(rotaryKnob1Read)); //For the knob on the control panel
-  //   Serial1.write(lowByte(rotaryKnob1Read));
-  //   Serial1.write(highByte(rotaryKnob2Read)); //For the other knob of the control panel
-  //   Serial1.write(lowByte(rotaryKnob2Read));
-  // }
+    Serial1.write(packet1);                   //1st set of digital inputs
+    Serial1.write(packet2);                   //2nd set of digital inputs
+    Serial1.write(highByte(positionSet));     //Sets position of the control rod
+    Serial1.write(lowByte(positionSet));
+    Serial1.write(highByte(positionRead));    //Reads the position of the control rod
+    Serial1.write(lowByte(positionRead));
+    Serial1.write(highByte(rotaryKnob1Read)); //For the knob on the control panel
+    Serial1.write(lowByte(rotaryKnob1Read));
+    Serial1.write(highByte(rotaryKnob2Read)); //For the other knob of the control panel
+    Serial1.write(lowByte(rotaryKnob2Read));
+  }
 }
