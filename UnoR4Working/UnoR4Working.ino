@@ -20,6 +20,17 @@ int rodPositionMaxPin = 7; //Wire the max rod position to this pin
 //packet 2
 int speedPin = 6;          //Wire the switch that determines speed to this pin
 
+//Test variables--------------------------------------------------------------------
+bool powerToggledState = false;
+bool lastPowerButtonReading = HIGH; 
+unsigned long lastDebounceTime = 0;
+unsigned long debounceDelay = 50;
+
+//End of test varibales ^-----------------------
+
+bool magnetToggledState = false;
+bool lastMagnetButtonReading = HIGH;
+
 //PWM input
 bool controlPin = false; //Controls were tied to pin 7 but now run off of a variable
 
@@ -80,8 +91,31 @@ void setup() {
 }
 
 void loop() {
-  //Start by checking if the motor should be running
-  // This must be called frequently for smooth stepping
+bool currentPowerReading = digitalRead(powerPin);
+  bool currentMagnetReading = digitalRead(electromagnetPin);
+
+  // 2. Toggle Logic for Power
+  if (currentPowerReading == LOW && lastPowerButtonReading == HIGH) {
+    if ((millis() - lastDebounceTime) > debounceDelay) {
+      powerToggledState = !powerToggledState; 
+      lastDebounceTime = millis();
+    }
+  }
+  // This update MUST be outside the IF block to track the button release
+  lastPowerButtonReading = currentPowerReading; 
+
+  // 3. Toggle Logic for Magnet
+  if (currentMagnetReading == LOW && lastMagnetButtonReading == HIGH) {
+    if ((millis() - lastDebounceTime) > debounceDelay) {
+      magnetToggledState = !magnetToggledState; 
+      lastDebounceTime = millis();
+    }
+  }
+  // This update MUST be outside the IF block
+  lastMagnetButtonReading = currentMagnetReading;
+
+  // 4. Stepper Motor Update
+  // Keep runSpeed() outside of an IF if possible, or ensure controlPin is reliable
   if(controlPin) {
     stepper.runSpeed();
   }
@@ -142,12 +176,14 @@ void loop() {
 
   //Packet1 Setup---------------------------------------------
   if (scramActive) packet1 |= (1 << 0);         //1st bit activates SCRAM condition
-  if (powerActive) packet1 |= (1 << 1);         //2nd bit activates power
-  if (magnetActive) packet1 |= (1 << 2);        //3rd bit activates the electromagnet
+  // if (powerActive) packet1 |= (1 << 1);         //2nd bit activates power
+  // if (magnetActive) packet1 |= (1 << 2);        //3rd bit activates the electromagnet
+  if (powerToggledState)           packet1 |= (1 << 1); // Uses the toggled state
+  if (magnetToggledState)          packet1 |= (1 << 2); // Uses the toggled state
   if (forwardActive) packet1 |= (1 << 3);       //4th bit activates the forward action of the stepper
   if (backwardActive) packet1 |= (1 << 4);      //5th bit activates the backward action of the stepper
-  if (maxPositionActive) packet1 |= (1 << 5);   //6th bit activates the pause movement at max range
-  if (minPositionActive) packet1 |= (1 << 6);   //7th bit activates the pause movement at min range
+  if (minPositionActive) packet1 |= (1 << 5);   //6th bit activates the pause movement at max range
+  if (maxPositionActive) packet1 |= (1 << 6);   //7th bit activates the pause movement at min range
   if (controlPin) packet1 |= (1<< 7);            //8th bit is a debug variable right now to see if PWM should output
 
   //Packet2 Setup
@@ -174,4 +210,5 @@ void loop() {
     Serial1.write(highByte(rotaryKnob2Read)); //For the other knob of the control panel
     Serial1.write(lowByte(rotaryKnob2Read));
   }
-}
+  }
+
