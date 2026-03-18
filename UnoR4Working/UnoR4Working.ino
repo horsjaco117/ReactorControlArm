@@ -1,5 +1,5 @@
 #include <AccelStepper.h>
-
+//All Variables
 //Analog input variables---------------------------------------------------------
 int positionSetPin = A0;      //The position set voltage wire needs to go to A0
 int positionReadPin = A1;     //The position read voltage wire needs to go to A1
@@ -21,15 +21,31 @@ int rodPositionMaxPin = 7; //Wire the max rod position to this pin
 int speedPin = 6;          //Wire the switch that determines speed to this pin
 
 //Test variables--------------------------------------------------------------------
+//Sets default for the variable tracking button states
+bool scramToggledState = false;
 bool powerToggledState = false;
+bool magnetToggledState = false;
+bool forwardToggledState = false;
+bool backwardToggledState = false;
+bool posMinToggledState = false;
+bool posMaxToggledState = false;
+bool speedToggledState = false;
+
+//Other set of variables to track button states
+bool lastScramButtonReading = HIGH;
 bool lastPowerButtonReading = HIGH; 
+bool lastMagnetButtonReading = HIGH;
+bool lastForwardButtonReading = HIGH;
+bool lastBackwardButtonReading = HIGH;
+bool lastPosMinButtonReading = HIGH;
+bool lastPosMaxButtonReading = HIGH;
+bool lastSpeedButtonReading = HIGH;
+
+//Software Debounce
 unsigned long lastDebounceTime = 0;
 unsigned long debounceDelay = 50;
 
-//End of test varibales ^-----------------------
-
-bool magnetToggledState = false;
-bool lastMagnetButtonReading = HIGH;
+//End of test variables ^-----------------------
 
 //PWM input
 bool controlPin = false; //Controls were tied to pin 7 but now run off of a variable
@@ -42,17 +58,15 @@ const uint8_t dirPin = 2;             //Ties to the positive direction pin of th
 const uint8_t _dirPin = 4;            //Ties to the negative direction pin of the stepper driver
 const uint8_t motorInterfaceType = 1; //Proprietary motor type for the header file
 
-
-
 //Variables for movement adjustments on the stepper
 const float stepsPerRevolution = 6400.0;    //This is tied to the stepper driver switch settings
 AccelStepper stepper = AccelStepper(motorInterfaceType, stepPin, dirPin);
 
-//Serial variables
+//Serial variables HYSTERESIS
 unsigned long lastTxTime = 0;             //Two transmission variable for more stable sending
 const unsigned long txIntervalMs = 200;
 
-void setup() {
+void setup() {//Digital Input Setup
   //Digital input setup--------------------------------------------------------------------------
 
   //Packet 1
@@ -91,8 +105,23 @@ void setup() {
 }
 
 void loop() {
-bool currentPowerReading = digitalRead(powerPin);
+  bool currentScramReading = digitalRead(scramPin);
+  bool currentPowerReading = digitalRead(powerPin);
   bool currentMagnetReading = digitalRead(electromagnetPin);
+  bool currentForwardReading = digitalRead(forwardPin);
+  bool currentBackwardReading = digitalRead(backwardPin);
+  bool currentPosMinReading = digitalRead(rodPositionMinPin);
+  bool currentPosMaxReading = digitalRead(rodPositionMaxPin);
+  bool currentSpeedReading = digitalRead(speedPin);
+  
+  if (currentScramReading == LOW && lastScramButtonReading == HIGH) {
+    if ((millis() - lastDebounceTime) > debounceDelay) {
+      scramToggledState = !scramToggledState;
+      lastDebounceTime = millis();
+    }
+  }
+
+  lastScramButtonReading = currentScramReading;
 
   // 2. Toggle Logic for Power
   if (currentPowerReading == LOW && lastPowerButtonReading == HIGH) {
@@ -113,6 +142,56 @@ bool currentPowerReading = digitalRead(powerPin);
   }
   // This update MUST be outside the IF block
   lastMagnetButtonReading = currentMagnetReading;
+
+  // 2. Toggle Logic for Power
+  if (currentForwardReading == LOW && lastForwardButtonReading == HIGH) {
+    if ((millis() - lastDebounceTime) > debounceDelay) {
+      forwardToggledState = !forwardToggledState; 
+      lastDebounceTime = millis();
+    }
+  }
+  // This update MUST be outside the IF block to track the button release
+  lastForwardButtonReading = currentForwardReading; 
+
+    // 2. Toggle Logic for Power
+  if (currentBackwardReading == LOW && lastBackwardButtonReading == HIGH) {
+    if ((millis() - lastDebounceTime) > debounceDelay) {
+      backwardToggledState = !backwardToggledState; 
+      lastDebounceTime = millis();
+    }
+  }
+  // This update MUST be outside the IF block to track the button release
+  lastBackwardButtonReading = currentBackwardReading; 
+
+    // 2. Toggle Logic for Power
+  if (currentPosMinReading == LOW && lastPosMinButtonReading == HIGH) {
+    if ((millis() - lastDebounceTime) > debounceDelay) {
+      posMinToggledState = !posMinToggledState; 
+      lastDebounceTime = millis();
+    }
+  }
+  // This update MUST be outside the IF block to track the button release
+  lastPosMinButtonReading = currentPosMinReading; 
+
+    if (currentPosMaxReading == LOW && lastPosMaxButtonReading == HIGH) {
+    if ((millis() - lastDebounceTime) > debounceDelay) {
+      posMaxToggledState = !posMaxToggledState; 
+      lastDebounceTime = millis();
+    }
+  }
+  // This update MUST be outside the IF block to track the button release
+  lastPosMaxButtonReading = currentPosMaxReading; 
+
+    if (currentSpeedReading == LOW && lastSpeedButtonReading == HIGH) {
+    if ((millis() - lastDebounceTime) > debounceDelay) {
+      speedToggledState = !speedToggledState; 
+      lastDebounceTime = millis();
+    }
+  }
+  // This update MUST be outside the IF block to track the button release
+  lastSpeedButtonReading = currentSpeedReading; 
+
+
 
   // 4. Stepper Motor Update
   // Keep runSpeed() outside of an IF if possible, or ensure controlPin is reliable
@@ -175,19 +254,26 @@ bool currentPowerReading = digitalRead(powerPin);
   //bool exampleFunction = (digtialRead(examplePin) == Low);
 
   //Packet1 Setup---------------------------------------------
-  if (scramActive) packet1 |= (1 << 0);         //1st bit activates SCRAM condition
+  // if (scramActive) packet1 |= (1 << 0);         //1st bit activates SCRAM condition
   // if (powerActive) packet1 |= (1 << 1);         //2nd bit activates power
   // if (magnetActive) packet1 |= (1 << 2);        //3rd bit activates the electromagnet
-  if (powerToggledState)           packet1 |= (1 << 1); // Uses the toggled state
-  if (magnetToggledState)          packet1 |= (1 << 2); // Uses the toggled state
-  if (forwardActive) packet1 |= (1 << 3);       //4th bit activates the forward action of the stepper
-  if (backwardActive) packet1 |= (1 << 4);      //5th bit activates the backward action of the stepper
-  if (minPositionActive) packet1 |= (1 << 5);   //6th bit activates the pause movement at max range
-  if (maxPositionActive) packet1 |= (1 << 6);   //7th bit activates the pause movement at min range
+    // if (forwardActive) packet1 |= (1 << 3);       //4th bit activates the forward action of the stepper
+  // if (backwardActive) packet1 |= (1 << 4);      //5th bit activates the backward action of the stepper
+  // if (minPositionActive) packet1 |= (1 << 5);   //6th bit activates the pause movement at max range
+  // if (maxPositionActive) packet1 |= (1 << 6);   //7th bit activates the pause movement at min range
+  if (scramToggledState)  packet1 |= (1 << 0);
+  if (powerToggledState)  packet1 |= (1 << 1); // Uses the toggled state
+  if (magnetToggledState) packet1 |= (1 << 2); // Uses the toggled state
+  if (forwardToggledState) packet1 |= (1 << 3);
+  if (backwardToggledState) packet1 |= (1 << 4);
+  if (posMinToggledState) packet1 |= (1<< 5);
+  if (posMaxToggledState) packet1 |= (1 << 6);
   if (controlPin) packet1 |= (1<< 7);            //8th bit is a debug variable right now to see if PWM should output
 
+
   //Packet2 Setup
-  if (fast_Slow) packet2 |= (1 << 0);
+  if (speedToggledState) packet2 |= (1<< 0);
+  //if (fast_Slow) packet2 |= (1 << 0);
   //if (bitExample) packet1 |= (1 << bit#);
 
   //Test serial code 
