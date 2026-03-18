@@ -114,6 +114,7 @@ void loop() {
   bool currentPosMaxReading = digitalRead(rodPositionMaxPin);
   bool currentSpeedReading = digitalRead(speedPin);
   
+  //Logic for latching buttons
   if (currentScramReading == LOW && lastScramButtonReading == HIGH) {
     if ((millis() - lastDebounceTime) > debounceDelay) {
       scramToggledState = !scramToggledState;
@@ -229,8 +230,8 @@ void loop() {
   bool scramActive = (digitalRead(scramPin) == LOW);                 //This section of code tells pins whether to activate at 5v(high) or .7V(low)
   bool powerActive = (digitalRead(powerPin) == LOW);                 //The variables are assigned as boolean type 
   bool magnetActive = (digitalRead(electromagnetPin) == LOW);        //See Packet setup for which bit is what function
-  bool forwardActive = (digitalRead(forwardPin) == LOW);
-  bool backwardActive = (digitalRead(backwardPin) == LOW);
+  bool forwardActive = (digitalRead(forwardPin) == HIGH);
+  bool backwardActive = (digitalRead(backwardPin) == HIGH);
   bool maxPositionActive = (digitalRead(rodPositionMaxPin) == LOW);
   bool minPositionActive = (digitalRead(rodPositionMinPin) == LOW);
 
@@ -254,18 +255,22 @@ void loop() {
   //bool exampleFunction = (digtialRead(examplePin) == Low);
 
   //Packet1 Setup---------------------------------------------
+  
+  //Unlatched variables
   // if (scramActive) packet1 |= (1 << 0);         //1st bit activates SCRAM condition
   // if (powerActive) packet1 |= (1 << 1);         //2nd bit activates power
   // if (magnetActive) packet1 |= (1 << 2);        //3rd bit activates the electromagnet
-    // if (forwardActive) packet1 |= (1 << 3);       //4th bit activates the forward action of the stepper
-  // if (backwardActive) packet1 |= (1 << 4);      //5th bit activates the backward action of the stepper
+  if (forwardActive) packet1 |= (1 << 3);       //4th bit activates the forward action of the stepper
+  if (backwardActive) packet1 |= (1 << 4);      //5th bit activates the backward action of the stepper
   // if (minPositionActive) packet1 |= (1 << 5);   //6th bit activates the pause movement at max range
   // if (maxPositionActive) packet1 |= (1 << 6);   //7th bit activates the pause movement at min range
+
+  //Latched Serial
   if (scramToggledState)  packet1 |= (1 << 0);
   if (powerToggledState)  packet1 |= (1 << 1); // Uses the toggled state
   if (magnetToggledState) packet1 |= (1 << 2); // Uses the toggled state
-  if (forwardToggledState) packet1 |= (1 << 3);
-  if (backwardToggledState) packet1 |= (1 << 4);
+  //if (forwardToggledState) packet1 |= (1 << 3);
+  //if (backwardToggledState) packet1 |= (1 << 4);
   if (posMinToggledState) packet1 |= (1<< 5);
   if (posMaxToggledState) packet1 |= (1 << 6);
   if (controlPin) packet1 |= (1<< 7);            //8th bit is a debug variable right now to see if PWM should output
