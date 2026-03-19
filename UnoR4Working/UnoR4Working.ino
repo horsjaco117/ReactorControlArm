@@ -289,7 +289,7 @@ void loop() {
     //Serial1.flush();                  // Wait for any previous transmission to complete
     //Serial.println(positionSet);
 
-    Serial1.write(0b00100100);                //HEX 24 only for triggering on the oscope
+    //Serial1.write(0b00100100);                //HEX 24 only for triggering on the oscope
     Serial1.write(packet1);                   //1st set of digital inputs
     Serial1.write(packet2);                   //2nd set of digital inputs
     Serial1.write(highByte(positionSet));     //Sets position of the control rod
@@ -300,6 +300,7 @@ void loop() {
     Serial1.write(lowByte(rotaryKnob1Read));
     Serial1.write(highByte(rotaryKnob2Read)); //For the other knob of the control panel
     Serial1.write(lowByte(rotaryKnob2Read));
+    Serial1.write(0b00100100);
   }
   }
 
