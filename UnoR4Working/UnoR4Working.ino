@@ -1,4 +1,5 @@
 #include <AccelStepper.h>
+#include <SPI.h>
 //All Variables
 //Analog input variables---------------------------------------------------------
 int positionSetPin = A0;      //The position set voltage wire needs to go to A0
@@ -113,6 +114,8 @@ void loop() {
   bool currentPosMinReading = digitalRead(rodPositionMinPin);
   bool currentPosMaxReading = digitalRead(rodPositionMaxPin);
   bool currentSpeedReading = digitalRead(speedPin);
+
+  static unsigned long lastSyncTime = 0;
   
   //Logic for latching buttons
   if (currentScramReading == LOW && lastScramButtonReading == HIGH) {
@@ -188,6 +191,48 @@ void loop() {
   }
   lastSpeedButtonReading = currentSpeedReading; 
 
+   // ==================== SERIAL READ WITH 0x24 FF VERIFICATION ====================
+  // Only flips the toggled states when it receives the exact sequence: 0x24 followed by 0xFF,
+  // then the flipMask byte.
+  // This adds strong verification before any change is applied.
+  static enum { IDLE, SAW_24, SAW_FF } serialState = IDLE;
+
+  while (Serial1.available() > 0) {
+    uint8_t incoming = Serial1.read();
+
+    switch (serialState) {
+      case IDLE:
+        if (incoming == 0x24) {
+          serialState = SAW_24;
+        }
+        break;
+
+      case SAW_24:
+        if (incoming == 0xFF) {
+          serialState = SAW_FF;        // Ready for the flipMask
+        } else {
+          serialState = IDLE;          // Wrong second byte → reset
+        }
+        break;
+
+      case SAW_FF:
+        // This byte is the flipMask — apply the flips
+        uint8_t flipMask = incoming;
+
+        if (flipMask & (1 << 0)) scramToggledState   = !scramToggledState;
+        if (flipMask & (1 << 1)) powerToggledState   = !powerToggledState;
+        if (flipMask & (1 << 2)) magnetToggledState  = !magnetToggledState;
+        if (flipMask & (1 << 3)) forwardToggledState = !forwardToggledState;
+        if (flipMask & (1 << 4)) backwardToggledState = !backwardToggledState;
+        if (flipMask & (1 << 5)) posMinToggledState  = !posMinToggledState;
+        if (flipMask & (1 << 6)) posMaxToggledState  = !posMaxToggledState;
+        if (flipMask & (1 << 7)) speedToggledState   = !speedToggledState;
+
+        serialState = IDLE;   // Reset for next command
+        break;
+    }
+  }
+  // =====================================================================
   // 4. Stepper Motor Update
   // Keep runSpeed() outside of an IF if possible, or ensure controlPin is reliable
   if(controlPin) {
