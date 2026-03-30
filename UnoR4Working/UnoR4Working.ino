@@ -141,58 +141,52 @@ void loop() {
       lastDebounceTime = millis();
     }
   }
-  // This update MUST be outside the IF block
   lastMagnetButtonReading = currentMagnetReading;
 
-  // 2. Toggle Logic for Power
+  // 4. Toggle Logic for Forward Logic
   if (currentForwardReading == LOW && lastForwardButtonReading == HIGH) {
     if ((millis() - lastDebounceTime) > debounceDelay) {
       forwardToggledState = !forwardToggledState; 
       lastDebounceTime = millis();
     }
   }
-  // This update MUST be outside the IF block to track the button release
   lastForwardButtonReading = currentForwardReading; 
 
-    // 2. Toggle Logic for Power
+    // 5. Toggle Logic for Backward Logic
   if (currentBackwardReading == LOW && lastBackwardButtonReading == HIGH) {
     if ((millis() - lastDebounceTime) > debounceDelay) {
       backwardToggledState = !backwardToggledState; 
       lastDebounceTime = millis();
     }
   }
-  // This update MUST be outside the IF block to track the button release
   lastBackwardButtonReading = currentBackwardReading; 
 
-    // 2. Toggle Logic for Power
+    // 6. Toggle Logic for Minimum Position
   if (currentPosMinReading == LOW && lastPosMinButtonReading == HIGH) {
     if ((millis() - lastDebounceTime) > debounceDelay) {
       posMinToggledState = !posMinToggledState; 
       lastDebounceTime = millis();
     }
   }
-  // This update MUST be outside the IF block to track the button release
   lastPosMinButtonReading = currentPosMinReading; 
 
+    // 7. Toggle logic for maximum Position
     if (currentPosMaxReading == LOW && lastPosMaxButtonReading == HIGH) {
     if ((millis() - lastDebounceTime) > debounceDelay) {
       posMaxToggledState = !posMaxToggledState; 
       lastDebounceTime = millis();
     }
   }
-  // This update MUST be outside the IF block to track the button release
   lastPosMaxButtonReading = currentPosMaxReading; 
 
+    // 8. Toggle logic for High or low speed
     if (currentSpeedReading == LOW && lastSpeedButtonReading == HIGH) {
     if ((millis() - lastDebounceTime) > debounceDelay) {
       speedToggledState = !speedToggledState; 
       lastDebounceTime = millis();
     }
   }
-  // This update MUST be outside the IF block to track the button release
   lastSpeedButtonReading = currentSpeedReading; 
-
-
 
   // 4. Stepper Motor Update
   // Keep runSpeed() outside of an IF if possible, or ensure controlPin is reliable
@@ -226,14 +220,14 @@ void loop() {
     stepper.setSpeed(stepsPerSecond);
   }
 
-  //First digital packet----------------------------------
+  //First digital packet(And other Serial Handling)----------------------------------
   bool scramActive = (digitalRead(scramPin) == LOW);                 //This section of code tells pins whether to activate at 5v(high) or .7V(low)
   bool powerActive = (digitalRead(powerPin) == LOW);                 //The variables are assigned as boolean type 
   bool magnetActive = (digitalRead(electromagnetPin) == LOW);        //See Packet setup for which bit is what function
   bool forwardActive = (digitalRead(forwardPin) == HIGH);
   bool backwardActive = (digitalRead(backwardPin) == HIGH);
-  bool maxPositionActive = (digitalRead(rodPositionMaxPin) == LOW);
-  bool minPositionActive = (digitalRead(rodPositionMinPin) == LOW);
+  bool maxPositionActive = (digitalRead(rodPositionMaxPin) == HIGH);
+  bool minPositionActive = (digitalRead(rodPositionMinPin) == HIGH);
 
     //Direction Control test code-----------------------
   if (forwardActive) {
@@ -262,8 +256,8 @@ void loop() {
   // if (magnetActive) packet1 |= (1 << 2);        //3rd bit activates the electromagnet
   if (forwardActive) packet1 |= (1 << 3);       //4th bit activates the forward action of the stepper
   if (backwardActive) packet1 |= (1 << 4);      //5th bit activates the backward action of the stepper
-  // if (minPositionActive) packet1 |= (1 << 5);   //6th bit activates the pause movement at max range
-  // if (maxPositionActive) packet1 |= (1 << 6);   //7th bit activates the pause movement at min range
+  if (minPositionActive) packet1 |= (1 << 5);   //6th bit activates the pause movement at max range
+  if (maxPositionActive) packet1 |= (1 << 6);   //7th bit activates the pause movement at min range
 
   //Latched Serial
   if (scramToggledState)  packet1 |= (1 << 0);
@@ -271,13 +265,13 @@ void loop() {
   if (magnetToggledState) packet1 |= (1 << 2); // Uses the toggled state
   //if (forwardToggledState) packet1 |= (1 << 3);
   //if (backwardToggledState) packet1 |= (1 << 4);
-  if (posMinToggledState) packet1 |= (1<< 5);
-  if (posMaxToggledState) packet1 |= (1 << 6);
-  if (controlPin) packet1 |= (1<< 7);            //8th bit is a debug variable right now to see if PWM should output
+  //if (posMinToggledState) packet1 |= (1<< 5);
+  //if (posMaxToggledState) packet1 |= (1 << 6);
+  if (speedToggledState) packet1 |= (1<< 7);
 
 
   //Packet2 Setup
-  if (speedToggledState) packet2 |= (1<< 0);
+  if (controlPin) packet2 |= (1<< 0);            //8th bit is a debug variable right now to see if PWM should output
   //if (fast_Slow) packet2 |= (1 << 0);
   //if (bitExample) packet1 |= (1 << bit#);
 
@@ -290,6 +284,7 @@ void loop() {
     //Serial.println(positionSet);
 
     //Serial1.write(0b00100100);                //HEX 24 only for triggering on the oscope
+    //TX and RX comms
     Serial1.write(packet1);                   //1st set of digital inputs
     Serial1.write(packet2);                   //2nd set of digital inputs
     Serial1.write(highByte(positionSet));     //Sets position of the control rod
@@ -301,6 +296,19 @@ void loop() {
     Serial1.write(highByte(rotaryKnob2Read)); //For the other knob of the control panel
     Serial1.write(lowByte(rotaryKnob2Read));
     Serial1.write(0b00100100);
+
+    //USB comms
+    // Serial.write(packet1);                   //1st set of digital inputs
+    // Serial.write(packet2);                   //2nd set of digital inputs
+    // Serial.write(highByte(positionSet));     //Sets position of the control rod
+    // Serial.write(lowByte(positionSet));
+    // Serial.write(highByte(positionRead));    //Reads the position of the control rod
+    // Serial.write(lowByte(positionRead));
+    // Serial.write(highByte(rotaryKnob1Read)); //For the knob on the control panel
+    // Serial.write(lowByte(rotaryKnob1Read));
+    // Serial.write(highByte(rotaryKnob2Read)); //For the other knob of the control panel
+    // Serial.write(lowByte(rotaryKnob2Read));
+    // Serial.write(0b00100100);
   }
   }
 
