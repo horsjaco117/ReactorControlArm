@@ -1,5 +1,7 @@
 #include <AccelStepper.h>
 #include <SPI.h>
+#include <Ethernet.h>
+
 //All Variables
 //Analog input variables---------------------------------------------------------
 int positionSetPin = A0;      //The position set voltage wire needs to go to A0
