@@ -2,6 +2,14 @@
 #include <SPI.h>
 #include <Ethernet.h>
 #include <ArduinoJson.h>
+#include <mbed.h>
+
+//Moving SPI pins
+//#define SPI SPI1   // Redirect default SPI to the Uno-style pins
+
+//STM hardware Timer
+mbed::Ticker stepperTicker;
+using namespace std::chrono_literals;
 
 //Ethernet Communication
 //MAC address
@@ -16,6 +24,9 @@ EthernetServer server(80);
 const uint16_t piPort = 6006;                    // Port your Pi is listening on
 const unsigned long pushIntervalMs = 1000;       // Send JSON to Pi every 1 second (adjust as needed)
 unsigned long lastPushTime = 0;
+
+//SPI to normal side pins
+const int CS_PIN = 10;
 
 //All Variables
 //Analog input variables---------------------------------------------------------
@@ -66,14 +77,14 @@ unsigned long debounceDelay = 50;
 //End of test variables ^-----------------------
 
 //PWM input
-bool controlPin = false; //Controls were tied to pin 7 but now run off of a variable
+volatile bool controlPin = false; //Controls were tied to pin 7 but now run off of a variable
 
 //Digital Output Variables--------------------------------------
 
 //PWM motor outputs
-const uint8_t stepPin = 3;            //Outputs the PWM signal
-const uint8_t dirPin = 2;             //Ties to the positive direction pin of the stepper driver
-const uint8_t _dirPin = 4;            //Ties to the negative direction pin of the stepper driver
+const uint8_t stepPin = 6;            //Outputs the PWM signal
+const uint8_t dirPin = 5;             //Ties to the positive direction pin of the stepper driver
+const uint8_t _dirPin = 7;            //Ties to the negative direction pin of the stepper driver
 const uint8_t motorInterfaceType = 1; //Proprietary motor type for the header file
 
 //Variables for movement adjustments on the stepper
@@ -83,6 +94,13 @@ AccelStepper stepper = AccelStepper(motorInterfaceType, stepPin, dirPin);
 //Serial variables HYSTERESIS
 unsigned long lastTxTime = 0;             //Two transmission variable for more stable sending
 const unsigned long txIntervalMs = 200;
+
+//Call function for the stepper motor
+void updateMotor() {
+  if (controlPin) {
+    stepper.runSpeed();
+  }
+}
 
 void setup() {//Digital Input Setup
   //Digital input setup--------------------------------------------------------------------------
@@ -100,9 +118,9 @@ void setup() {//Digital Input Setup
   pinMode(46, INPUT);              //Tells the controller desired speed option
 
   //Digital input for PWM and stepper
-  pinMode(3, OUTPUT);             //Connects to +Dir of Stepper Driver
-  pinMode(4, OUTPUT);             //Connects to +Pul of Stepper Driver
-  pinMode(5,OUTPUT);              //Connects to _Dir of Stepper Driver
+  pinMode(5, OUTPUT);             //Connects to +Dir of Stepper Driver
+  pinMode(6, OUTPUT);             //Connects to +Pul of Stepper Driver
+  pinMode(7,OUTPUT);              //Connects to _Dir of Stepper Driver
 
   
   //Analog input setup---------------------------------------------------------------------------------
@@ -111,7 +129,10 @@ void setup() {//Digital Input Setup
   pinMode(A2, INPUT);               //Analog voltage indicating position of the rotary knob
   pinMode(A3, INPUT);               //Analog voltage indicating position of the second rotary knob
 
-  pinMode(10,OUTPUT);
+
+//SPI test
+  pinMode(CS_Pin, OUTPUT);
+  digitalWrite(CS_Pin, HIGH);
 
   // Stepper configuration (moved here - only needs to run once)
   stepper.setMaxSpeed(12800.0);     //Max Speed
@@ -127,6 +148,16 @@ void setup() {//Digital Input Setup
   //Ethernet Setup
   Ethernet.begin(mac, ip);
 
+  // OuterSPI pins
+  SPI1.begin();
+
+  // pinMode(SPI_CS_PIN, OUTPUT);
+  // digitalWrite(SPI_CS_PIN, HIGH);
+  
+  // Example transaction
+  SPI1.beginTransaction(SPISettings(1000000, MSBFIRST, SPI_MODE0));
+
+  //Middle Pins for SPI
   SPI.beginTransaction(SPISettings(14000000, MSBFIRST, SPI_MODE0));  // optional tuning
 // But more importantly, use shorter transactions if possible
 
@@ -145,6 +176,16 @@ void setup() {//Digital Input Setup
   server.begin();
   Serial.print("server is at ");
   Serial.println(Ethernet.localIP());
+
+  //More SPI stuff
+  // Set timeout to a very small number (e.g., 50ms) and retries to 1
+  //Ethernet.setRetransmissionTimeout(50);
+  //Ethernet.setRetransmissionCount(1);
+
+  //Hardware Timer Setup stuff
+  // Start the hardware timer at the end of setup().
+  // This tells the Giga to run updateMotor() every 50 microseconds.
+  stepperTicker.attach(&updateMotor, 50us);
 
 }
 
@@ -285,7 +326,7 @@ void loop() {
   // 4. Stepper Motor Update
   // Keep runSpeed() outside of an IF if possible, or ensure controlPin is reliable
   if(controlPin) {
-    stepper.runSpeed();
+    //stepper.runSpeed();
   }
 
   //Define variable again---------------------------------
@@ -415,7 +456,7 @@ void loop() {
     // an http request ends with a blank line
     boolean currentLineIsBlank = true;
     while (client.connected()) {
-      stepper.runSpeed(); //This ensure the Stepper motor runs while connected to etherenet
+      //stepper.runSpeed(); //This ensure the Stepper motor runs while connected to etherenet
       if (client.available()) {
         char c = client.read();
         Serial.write(c);

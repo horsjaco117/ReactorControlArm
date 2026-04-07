@@ -3,9 +3,9 @@
 // ────────────────────────────────────────────────
 // Configuration – adjust these values as needed
 // ────────────────────────────────────────────────
-const uint8_t CONTROL_PIN       = 4;      // Digital input pin (HIGH = run, LOW = stop)
-const uint8_t stepPin           = 3;
-const uint8_t dirPin            = 2;
+const uint8_t CONTROL_PIN       = 7;      // Digital input pin (HIGH = run, LOW = stop)
+const uint8_t stepPin           = 6;
+const uint8_t dirPin            = 5;
 const uint8_t motorInterfaceType = 1;
 
 const float TARGET_RPM          = 10.0;

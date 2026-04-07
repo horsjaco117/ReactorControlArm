@@ -1,26 +1,28 @@
 #include <Arduino.h>
-#include <RPC.h>
 #include <SPI.h>
 #include <Ethernet.h>
 #include <ArduinoJson.h>
+#include <stm32h7xx_hal.h>   // For cache maintenance
 
-// === Sensor Global Variables (Updated by M4) ===
-int m4_posSet = 0;
-int m4_posRead = 0;
-int m4_knob1 = 0;
-int m4_knob2 = 0;
-int m4_packet1 = 0;
-int m4_packet2 = 0;
+// === Shared Memory Struct (MUST be identical on M4) ===
+typedef struct {
+  // Motor commands: M7 → M4
+  float targetSpeed;
+  bool  controlPin;
+  bool  isBackward;
+  bool  newMotorCmd;
 
-// === RPC Function: Called by M4 to push sensor data ===
-void updateSensors(int pSet, int pRead, int k1, int k2, int pack1, int pack2) {
-  m4_posSet = pSet;
-  m4_posRead = pRead;
-  m4_knob1 = k1;
-  m4_knob2 = k2;
-  m4_packet1 = pack1;
-  m4_packet2 = pack2;
-}
+  // Sensor data: M4 → M7
+  int   posSet;
+  int   posRead;
+  int   knob1;
+  int   knob2;
+  int   digitalPacket1;
+  int   digitalPacket2;
+  bool  newSensorData;
+} SharedData;
+
+SharedData *shared = (SharedData *)0x38000000;   // SRAM4
 
 // === Ethernet Setup ===
 byte mac[] = {0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED};
@@ -28,20 +30,16 @@ IPAddress ip(134, 50, 51, 21);
 IPAddress piIP(134, 50, 51, 24);
 EthernetServer server(80);
 const uint16_t piPort = 6006;
-const unsigned long pushIntervalMs = 1000;
 unsigned long lastPushTime = 0;
+const unsigned long pushIntervalMs = 1000;
 
-// === Serial & Logic Variables ===
+// === Logic Variables ===
 unsigned long lastTxTime = 0;
 const unsigned long txIntervalMs = 200;
 
 bool scramToggledState = false;
 bool powerToggledState = false;
 bool magnetToggledState = false;
-bool forwardToggledState = false;
-bool backwardToggledState = false;
-bool posMinToggledState = false;
-bool posMaxToggledState = false;
 bool speedToggledState = false;
 
 uint8_t lastDigitalPacket1 = 0;
@@ -51,7 +49,7 @@ unsigned long debounceDelay = 50;
 
 int lastPositionSet = -1;
 const int hysteresis = 4;
-float targetStepsPerSecond = 0;
+float targetStepsPerSecond = 0.0f;
 
 enum { IDLE, SAW_24, SAW_FF } serialState = IDLE;
 
@@ -59,15 +57,10 @@ void setup() {
   Serial.begin(9600);
   Serial1.begin(9600);
 
-  RPC.begin();
-  RPC.bind("updateSensors", updateSensors); 
-  
   LL_RCC_ForceCM4Boot();
-  delay(500); 
+  delay(500);
 
   Ethernet.begin(mac, ip);
-  // SPI.beginTransaction removed — Ethernet library handles it
-
   if (Ethernet.hardwareStatus() == EthernetNoHardware) {
     Serial.println("Ethernet hardware missing!");
     while (true) delay(1);
@@ -76,91 +69,89 @@ void setup() {
   server.begin();
   Serial.print("M7 Server is at ");
   Serial.println(Ethernet.localIP());
+
+  // Initialize shared memory
+  SCB_InvalidateDCache_by_Addr((uint32_t*)shared, sizeof(SharedData));
+  memset(shared, 0, sizeof(SharedData));
 }
 
 void loop() {
-  unsigned long now = millis();   // <<< MOVED TO TOP (fixes scoping)
+  unsigned long now = millis();
 
-  // 1. Read Raw Logic from the M4's globals
-  bool rawScram    = (m4_packet1 & (1 << 0));
-  bool rawPower    = (m4_packet1 & (1 << 1));
-  bool rawMagnet   = (m4_packet1 & (1 << 2));
-  bool rawForward  = (m4_packet1 & (1 << 3));
-  bool rawBackward = (m4_packet1 & (1 << 4));
-  bool rawPosMin   = (m4_packet1 & (1 << 5));
-  bool rawPosMax   = (m4_packet1 & (1 << 6));
-  bool rawSpeed    = (m4_packet2 & (1 << 0));
+  // === 1. Read fresh sensor data from shared memory ===
+  int posSetLocal = 0, posReadLocal = 0, knob1Local = 0, knob2Local = 0;
+  bool rawScram = false, rawPower = false, rawMagnet = false;
+  bool rawForward = false, rawBackward = false;
+  bool rawPosMin = false, rawPosMax = false;
+  bool rawSpeed = false;
 
+  if (shared->newSensorData) {
+    SCB_InvalidateDCache_by_Addr((uint32_t*)shared, sizeof(SharedData));  // Critical for M7 cache
 
+    posSetLocal   = shared->posSet;
+    posReadLocal  = shared->posRead;
+    knob1Local    = shared->knob1;
+    knob2Local    = shared->knob2;
 
-  // 2. Process Debouncing and Toggles
+    int pkt1 = shared->digitalPacket1;
+    int pkt2 = shared->digitalPacket2;
+
+    rawScram    = (pkt1 & (1 << 0));
+    rawPower    = (pkt1 & (1 << 1));
+    rawMagnet   = (pkt1 & (1 << 2));
+    rawForward  = (pkt1 & (1 << 3));
+    rawBackward = (pkt1 & (1 << 4));
+    rawPosMin   = (pkt1 & (1 << 5));
+    rawPosMax   = (pkt1 & (1 << 6));
+    rawSpeed    = (pkt2 & (1 << 0));
+
+    // Update speed from knob
+    if (abs(posSetLocal - lastPositionSet) >= hysteresis) {
+      lastPositionSet = posSetLocal;
+      float targetRPM = posSetLocal / 50.0;
+      targetStepsPerSecond = targetRPM * (6400.0 / 50.0);
+    }
+
+    lastDigitalPacket1 = pkt1;
+    lastDigitalPacket2 = pkt2;
+
+    shared->newSensorData = false;
+  }
+
+  // === 2. Debounce toggles ===
   if (now - lastDebounceTime > debounceDelay) {
     if (rawScram && !(lastDigitalPacket1 & (1 << 0))) scramToggledState = !scramToggledState;
     if (rawPower && !(lastDigitalPacket1 & (1 << 1))) powerToggledState = !powerToggledState;
     if (rawMagnet && !(lastDigitalPacket1 & (1 << 2))) magnetToggledState = !magnetToggledState;
     if (rawSpeed && !(lastDigitalPacket2 & (1 << 0))) speedToggledState = !speedToggledState;
-    // Only toggle buttons (scram/power/magnet/speed) are handled here.
-    // Forward/backward are momentary. Pos limits are switches.
     
     lastDebounceTime = now;
-    lastDigitalPacket1 = m4_packet1;
-    lastDigitalPacket2 = m4_packet2;
   }
 
-  // 3. Handle Serial1 Command Handshake (0x24 -> 0xFF -> Mask)
-  while (Serial1.available() > 0) {
-    uint8_t incoming = Serial1.read();
-    switch (serialState) {
-      case IDLE:
-        if (incoming == 0x24) serialState = SAW_24;
-        break;
-      case SAW_24:
-        if (incoming == 0xFF) serialState = SAW_FF;
-        else serialState = IDLE;
-        break;
-      case SAW_FF:
-        uint8_t flipMask = incoming;
-        if (flipMask & (1 << 0)) scramToggledState   = !scramToggledState;
-        if (flipMask & (1 << 1)) powerToggledState   = !powerToggledState;
-        if (flipMask & (1 << 2)) magnetToggledState  = !magnetToggledState;
-        if (flipMask & (1 << 3)) forwardToggledState = !forwardToggledState;
-        if (flipMask & (1 << 4)) backwardToggledState= !backwardToggledState;
-        if (flipMask & (1 << 5)) posMinToggledState  = !posMinToggledState;
-        if (flipMask & (1 << 6)) posMaxToggledState  = !posMaxToggledState;
-        if (flipMask & (1 << 7)) speedToggledState   = !speedToggledState;
-        serialState = IDLE;
-        break;
-    }
-  }
-
-  // 4. Calculate Motor Speed & Direction
-  if (abs(m4_posSet - lastPositionSet) >= hysteresis) {
-    lastPositionSet = m4_posSet;
-    float targetRPM = m4_posSet / 50.0;
-    targetStepsPerSecond = targetRPM * (6400.0 / 50.0);
-  }
-
-  // 5. Send Motor commands to M4 (throttled + change-detect)  <<< CRITICAL FIX
-  static unsigned long lastMotorCmd = 0;
-  static float lastTargetSPS = 0.0;
-  static bool lastControlPin = false;
-  static bool lastIsBackward = false;
-
+  // === 3. Motor command to shared memory (only on change) ===
   bool controlPin = rawForward || rawBackward;
-  
-  if ((now - lastMotorCmd >= 20) || 
-      (abs(targetStepsPerSecond - lastTargetSPS) > 0.1) ||
-      (controlPin != lastControlPin) || (rawBackward != lastIsBackward)) {
-    
-    RPC.call("updateMotorState", targetStepsPerSecond, (int)controlPin, (int)rawBackward);
-    
-    lastMotorCmd = now;
-    lastTargetSPS = targetStepsPerSecond;
-    lastControlPin = controlPin;
-    lastIsBackward = rawBackward;
+
+  static float lastSentSpeed = 0.0f;
+  static bool lastSentControl = false;
+  static bool lastSentBackward = false;
+
+  if (abs(targetStepsPerSecond - lastSentSpeed) > 0.1f ||
+      controlPin != lastSentControl ||
+      rawBackward != lastSentBackward) {
+
+    SCB_CleanDCache_by_Addr((uint32_t*)shared, sizeof(SharedData));  // Ensure M4 sees update
+
+    shared->targetSpeed = targetStepsPerSecond;
+    shared->controlPin  = controlPin;
+    shared->isBackward  = rawBackward;
+    shared->newMotorCmd = true;
+
+    lastSentSpeed    = targetStepsPerSecond;
+    lastSentControl  = controlPin;
+    lastSentBackward = rawBackward;
   }
 
-// 6. Handle Ethernet Server (Web Requests)
+  // === 4. Ethernet Web Server ===
   EthernetClient client = server.available();
   if (client) {
     bool currentLineIsBlank = true;
@@ -178,10 +169,10 @@ void loop() {
           doc["pos_max"]        = rawPosMax;
           doc["fast_slow"]      = rawSpeed;
           doc["control_active"] = controlPin;
-          doc["position_set"]   = m4_posSet;
-          doc["position_read"]  = m4_posRead;
-          doc["knob1"]          = m4_knob1;
-          doc["knob2"]          = m4_knob2;
+          doc["position_set"]   = posSetLocal;
+          doc["position_read"]  = posReadLocal;
+          doc["knob1"]          = knob1Local;
+          doc["knob2"]          = knob2Local;
 
           client.println("HTTP/1.1 200 OK");
           client.println("Content-Type: application/json");
@@ -200,8 +191,7 @@ void loop() {
     client.stop();
   }
 
-  // 7. Periodic Push to Raspberry Pi
-  //unsigned long now = millis();
+  // === 5. Periodic Push to Raspberry Pi ===
   if (now - lastPushTime >= pushIntervalMs) {
     lastPushTime = now;
     EthernetClient outgoing;
@@ -211,15 +201,16 @@ void loop() {
       doc["power"]          = powerToggledState;
       doc["forward"]        = rawForward;
       doc["backward"]       = rawBackward;
-      doc["position_set"]   = m4_posSet;
-      doc["position_read"]  = m4_posRead;
+      doc["position_set"]   = posSetLocal;
+      doc["position_read"]  = posReadLocal;
       
       serializeJson(doc, outgoing);
       outgoing.println();
       outgoing.stop();
     }
   }
-  // 8. Serial1 TX out
+
+  // === 6. Serial1 TX out ===
   if (now - lastTxTime >= txIntervalMs) {
     lastTxTime = now;
     
@@ -235,14 +226,14 @@ void loop() {
 
     Serial1.write(packet1Out);
     Serial1.write(controlPin ? 1 : 0); 
-    Serial1.write(highByte(m4_posSet));
-    Serial1.write(lowByte(m4_posSet));
-    Serial1.write(highByte(m4_posRead));
-    Serial1.write(lowByte(m4_posRead));
-    Serial1.write(highByte(m4_knob1));
-    Serial1.write(lowByte(m4_knob1));
-    Serial1.write(highByte(m4_knob2));
-    Serial1.write(lowByte(m4_knob2));
+    Serial1.write(highByte(posSetLocal));
+    Serial1.write(lowByte(posSetLocal));
+    Serial1.write(highByte(posReadLocal));
+    Serial1.write(lowByte(posReadLocal));
+    Serial1.write(highByte(knob1Local));
+    Serial1.write(lowByte(knob1Local));
+    Serial1.write(highByte(knob2Local));
+    Serial1.write(lowByte(knob2Local));
     Serial1.write(0b00100100);
   }
 }

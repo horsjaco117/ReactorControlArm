@@ -1,11 +1,11 @@
 #include <Arduino.h>
-#include <RPC.h>
+#include <string.h>        // for memset
 #include <AccelStepper.h>
 
 // === Pin Definitions ===
 const uint8_t stepPin = 3;
 const uint8_t dirPin = 2;
-const uint8_t _dirPin = 4;          // inverted dir for your specific driver/safety logic
+const uint8_t _dirPin = 4;
 const int positionSetPin = A0;
 const int positionReadPin = A1;
 const int rotaryKnobReadPin1 = A2;
@@ -13,50 +13,67 @@ const int rotaryKnobReadPin2 = A3;
 
 AccelStepper stepper(1, stepPin, dirPin);
 
-// Motor State Variables
+// Motor State
 bool motorControlPin = false;
 
-// === RPC Function: Called by M7 to update Motor ===
-void updateMotorState(float stepsPerSecond, int controlPinInt, int isBackward) {
-  motorControlPin = (controlPinInt > 0);
+// === Shared Memory Struct (MUST match M7 exactly) ===
+typedef struct {
+  // Motor command (from M7)
+  float targetSpeed;
+  bool  controlPin;
+  bool  isBackward;
+  bool  newMotorCmd;
 
-  if (motorControlPin) {
-    // Manual direction control as required by your hardware
-    if (isBackward > 0) {
-      digitalWrite(dirPin, HIGH);     // Backward
-      digitalWrite(_dirPin, LOW);
+  // Sensor data (from M4)
+  int   posSet;
+  int   posRead;
+  int   knob1;
+  int   knob2;
+  int   digitalPacket1;
+  int   digitalPacket2;
+  bool  newSensorData;
+} SharedData;
+
+SharedData *shared = (SharedData *)0x38000000;   // SRAM4 - correct address
+
+void applyMotorCommand() {
+  if (shared->newMotorCmd) {
+    motorControlPin = shared->controlPin;
+
+    if (motorControlPin) {
+      if (shared->isBackward) {
+        digitalWrite(dirPin, HIGH);
+        digitalWrite(_dirPin, LOW);
+      } else {
+        digitalWrite(dirPin, LOW);
+        digitalWrite(_dirPin, HIGH);
+      }
+      stepper.setSpeed(shared->targetSpeed);
     } else {
-      digitalWrite(dirPin, LOW);      // Forward
-      digitalWrite(_dirPin, HIGH);
+      stepper.setSpeed(0);
     }
-
-    // Use absolute (positive) speed only — let AccelStepper handle pulsing only
-    stepper.setSpeed(stepsPerSecond);   // always positive here
-  } 
-  else {
-    stepper.setSpeed(0);
-    motorControlPin = false;   // safety
+    shared->newMotorCmd = false;   // acknowledge
   }
 }
 
 void setup() {
-  RPC.begin();
-  RPC.bind("updateMotorState", updateMotorState);
+  // Initialize shared memory
+  memset(shared, 0, sizeof(SharedData));
 
   // Pin Modes
   pinMode(stepPin, OUTPUT);
   pinMode(dirPin, OUTPUT);
   pinMode(_dirPin, OUTPUT);
-  
-  // Buttons - pull-ups for active-LOW where applicable
+
   pinMode(53, INPUT_PULLUP); // Scram
   pinMode(52, INPUT_PULLUP); // Power
   pinMode(51, INPUT_PULLUP); // Magnet
   pinMode(46, INPUT_PULLUP); // Speed Fast/Slow
-  pinMode(50, INPUT);        // Forward (active-HIGH)
-  pinMode(49, INPUT);        // Backward
-  pinMode(48, INPUT);        // Min Pos
-  pinMode(47, INPUT);        // Max Pos
+
+  pinMode(50, INPUT); // Forward
+  pinMode(49, INPUT); // Backward
+  pinMode(48, INPUT); // Min Pos
+  pinMode(47, INPUT); // Max Pos
 
   pinMode(positionSetPin, INPUT);
   pinMode(positionReadPin, INPUT);
@@ -64,38 +81,43 @@ void setup() {
   pinMode(rotaryKnobReadPin2, INPUT);
 
   stepper.setMaxSpeed(12800.0);
-  stepper.setAcceleration(6400.0);  // unused with runSpeed(), but harmless
+  stepper.setAcceleration(6400.0);
   stepper.setMinPulseWidth(5);
 }
 
 void loop() {
-  // 1. Highest priority: keep motor stepping smoothly
+  // 1. Highest priority: motor stepping
   if (motorControlPin) {
     stepper.runSpeed();
   }
 
-  // 2. Gather Data and Push to M7 (now 20 Hz to avoid jitter)
-  static unsigned long lastSensorPush = 0;
-  if (millis() - lastSensorPush >= 50) {   // <--- changed
-    lastSensorPush = millis();
+  // 2. Apply any new motor command
+  applyMotorCommand();
 
-    int posSet = analogRead(positionSetPin);
-    int posRead = analogRead(positionReadPin);
-    int knob1 = analogRead(rotaryKnobReadPin1);
-    int knob2 = analogRead(rotaryKnobReadPin2);
+  // 3. Read sensors and push to shared memory (100 Hz)
+  static unsigned long lastSensorUpdate = 0;
+  if (millis() - lastSensorUpdate >= 10) {
+    lastSensorUpdate = millis();
 
-    int digitalPacket1 = 0;
-    if (digitalRead(53) == LOW)  digitalPacket1 |= (1 << 0); // Scram
-    if (digitalRead(52) == LOW)  digitalPacket1 |= (1 << 1); // Power
-    if (digitalRead(51) == LOW)  digitalPacket1 |= (1 << 2); // Magnet
-    if (digitalRead(50) == HIGH) digitalPacket1 |= (1 << 3); // Forward
-    if (digitalRead(49) == HIGH) digitalPacket1 |= (1 << 4); // Backward
-    if (digitalRead(48) == HIGH) digitalPacket1 |= (1 << 5); // Min Pos
-    if (digitalRead(47) == HIGH) digitalPacket1 |= (1 << 6); // Max Pos
+    shared->posSet = analogRead(positionSetPin);
+    shared->posRead = analogRead(positionReadPin);
+    shared->knob1 = analogRead(rotaryKnobReadPin1);
+    shared->knob2 = analogRead(rotaryKnobReadPin2);
 
-    int digitalPacket2 = 0;
-    if (digitalRead(46) == LOW) digitalPacket2 |= (1 << 0); // Speed Fast/Slow
+    int pkt1 = 0;
+    if (digitalRead(53) == LOW)  pkt1 |= (1 << 0);
+    if (digitalRead(52) == LOW)  pkt1 |= (1 << 1);
+    if (digitalRead(51) == LOW)  pkt1 |= (1 << 2);
+    if (digitalRead(50) == HIGH) pkt1 |= (1 << 3);
+    if (digitalRead(49) == HIGH) pkt1 |= (1 << 4);
+    if (digitalRead(48) == HIGH) pkt1 |= (1 << 5);
+    if (digitalRead(47) == HIGH) pkt1 |= (1 << 6);
+    shared->digitalPacket1 = pkt1;
 
-    RPC.call("updateSensors", posSet, posRead, knob1, knob2, digitalPacket1, digitalPacket2);
+    int pkt2 = 0;
+    if (digitalRead(46) == LOW) pkt2 |= (1 << 0);
+    shared->digitalPacket2 = pkt2;
+
+    shared->newSensorData = true;   // signal M7
   }
 }
