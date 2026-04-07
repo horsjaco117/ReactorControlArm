@@ -8,7 +8,7 @@ const uint8_t stepPin           = 3;
 const uint8_t dirPin            = 2;
 const uint8_t motorInterfaceType = 1;
 
-const float TARGET_RPM          = 3.0;
+const float TARGET_RPM          = 10.0;
 const float STEPS_PER_REVOLUTION = 6400.0;
 
 // For reporting position
@@ -37,7 +37,7 @@ void setup() {
 
   stepper.setMinPulseWidth(5);
 
-  Serial.println("Stepper ready – runs only when control pin is HIGH");
+  Serial.println("Stepper ready runs only when control pin is HIGH");
   Serial.print  ("Control pin: ");
   Serial.println(CONTROL_PIN);
 }

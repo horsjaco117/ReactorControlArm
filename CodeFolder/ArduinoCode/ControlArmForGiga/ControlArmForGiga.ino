@@ -111,6 +111,8 @@ void setup() {//Digital Input Setup
   pinMode(A2, INPUT);               //Analog voltage indicating position of the rotary knob
   pinMode(A3, INPUT);               //Analog voltage indicating position of the second rotary knob
 
+  pinMode(10,OUTPUT);
+
   // Stepper configuration (moved here - only needs to run once)
   stepper.setMaxSpeed(12800.0);     //Max Speed
   stepper.setAcceleration(6400.0);  //Acceleration
@@ -124,6 +126,9 @@ void setup() {//Digital Input Setup
 
   //Ethernet Setup
   Ethernet.begin(mac, ip);
+
+  SPI.beginTransaction(SPISettings(14000000, MSBFIRST, SPI_MODE0));  // optional tuning
+// But more importantly, use shorter transactions if possible
 
  // Check for Ethernet hardware present
   if (Ethernet.hardwareStatus() == EthernetNoHardware) {
@@ -386,6 +391,20 @@ void loop() {
     Serial1.write(lowByte(rotaryKnob2Read));
     Serial1.write(0b00100100);
 
+
+    //Test code for serial USB comms
+    //TX and RX comms
+    // Serial.println(packet1);                   //1st set of digital inputs
+    // Serial.println(packet2);                   //2nd set of digital inputs
+    // Serial.println(highByte(positionSet));     //Sets position of the control rod
+    // Serial.println(lowByte(positionSet));
+    // Serial.println(highByte(positionRead));    //Reads the position of the control rod
+    // Serial.println(lowByte(positionRead));
+    // Serial.println(highByte(rotaryKnob1Read)); //For the knob on the control panel
+    // Serial.println(lowByte(rotaryKnob1Read));
+    // Serial.println(highByte(rotaryKnob2Read)); //For the other knob of the control panel
+    // Serial.println(lowByte(rotaryKnob2Read));
+    // Serial.println(24);
   }
 
   // ==================== ETHERNET JSON WEB SERVER RESPONSE ====================
@@ -396,6 +415,7 @@ void loop() {
     // an http request ends with a blank line
     boolean currentLineIsBlank = true;
     while (client.connected()) {
+      stepper.runSpeed(); //This ensure the Stepper motor runs while connected to etherenet
       if (client.available()) {
         char c = client.read();
         Serial.write(c);
