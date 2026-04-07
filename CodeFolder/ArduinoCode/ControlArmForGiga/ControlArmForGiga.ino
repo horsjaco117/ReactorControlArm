@@ -26,7 +26,7 @@ const unsigned long pushIntervalMs = 1000;       // Send JSON to Pi every 1 seco
 unsigned long lastPushTime = 0;
 
 //SPI to normal side pins
-const int CS_PIN = 10;
+const int CS_Pin = 10;
 
 //All Variables
 //Analog input variables---------------------------------------------------------
