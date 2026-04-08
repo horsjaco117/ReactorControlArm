@@ -25,6 +25,11 @@ const uint16_t piPort = 6006;                    // Port your Pi is listening on
 const unsigned long pushIntervalMs = 1000;       // Send JSON to Pi every 1 second (adjust as needed)
 unsigned long lastPushTime = 0;
 
+// NEW: Track Ethernet link status so we NEVER call connect() when cable is unplugged
+// This completely eliminates the long blocking delays you were seeing.
+bool ethernetLinkUp = false;
+unsigned long lastLinkCheck = 0;
+
 //SPI to normal side pins
 const int CS_Pin = 10;
 
@@ -176,6 +181,14 @@ void setup() {//Digital Input Setup
   server.begin();
   Serial.print("server is at ");
   Serial.println(Ethernet.localIP());
+
+  // === TUNED ETHERNET TIMEOUTS + INITIAL LINK STATUS ===
+  // These two lines make failed connect() calls return in ~100 ms instead of many seconds
+  Ethernet.setRetransmissionTimeout(50);
+  Ethernet.setRetransmissionCount(2);
+
+  // Record initial link state (will be re-checked every 500 ms in loop)
+  ethernetLinkUp = (Ethernet.linkStatus() == LinkON);
 
   //More SPI stuff
   // Set timeout to a very small number (e.g., 50ms) and retries to 1
@@ -351,7 +364,7 @@ void loop() {
     lastPositionSet = positionSet;
 
     float targetRPM = positionSet / 50;
-    float stepsPerSecond = targetRPM * stepsPerRevolution / 50.0;   //Target RPM in charge of changing speed
+    float stepsPerSecond = targetRPM * stepsPerRevolution / 25.0;   //Target RPM in charge of changing speed
     stepper.setSpeed(stepsPerSecond);
   }
 
@@ -412,6 +425,14 @@ void loop() {
 
   //Test serial code 
   unsigned long now = millis();
+
+  // NEW: Fast, non-blocking link status check (runs every 500 ms)
+  // This keeps ethernetLinkUp accurate without any delay.
+  if (now - lastLinkCheck >= 500) {
+    lastLinkCheck = now;
+    ethernetLinkUp = (Ethernet.linkStatus() == LinkON);
+  }
+
   if (now - lastTxTime >= txIntervalMs) {
     lastTxTime = now;
 
@@ -514,7 +535,11 @@ void loop() {
     client.stop();
     Serial.println("client disconnected");
   }
-  if (now - lastPushTime >= pushIntervalMs) {
+
+  // ==================== PERIODIC PUSH TO PI (NOW SAFE WHEN CABLE UNPLUGGED) ====================
+  // Only attempt connect() when we know the link is up.
+  // This removes the multi-second blocking delays you saw.
+  if (ethernetLinkUp && (now - lastPushTime >= pushIntervalMs)) {
     lastPushTime = now;
 
     EthernetClient outgoing;
@@ -546,7 +571,8 @@ void loop() {
 
       Serial.println("Pushed JSON to Pi");
     } else {
+      ethernetLinkUp = false;    // Immediately mark link as down so we skip future attempts until it comes back
       //Serial.println("Failed to connect to Pi for push");
     }
-}
+  }
 }
