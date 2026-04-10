@@ -1,0 +1,112 @@
+Here’s exactly what you need to add to your script (`AGN-201 Simulation7.2.py`) so it **sends three fixed hex packets** out the physical UART pins (GPIO 14 TX / GPIO 15 RX) on the Raspberry Pi.
+
+### 1. First, add the import and open the serial port (near the top of the file)
+
+Add this right after the other imports (around line 20–30, after `import json`):
+
+```python
+import serial   # <-- ADD THIS
+```
+
+Then, add the serial port setup in the global section (I recommend placing it right after the Bluetooth setup, around the `BT_ADDR` block):
+
+```python
+# =========================
+# PHYSICAL UART (SERIAL) OUTPUT - GPIO 14/15
+# =========================
+try:
+    ser = serial.Serial(
+        port='/dev/serial0',      # or '/dev/ttyS0' on some Pi models
+        baudrate=9600,            # Change if your receiver needs a different speed (common: 9600, 19200, 115200)
+        parity=serial.PARITY_NONE,
+        stopbits=serial.STOPBITS_ONE,
+        bytesize=serial.EIGHTBITS,
+        timeout=0.1,
+        write_timeout=0.1
+    )
+    print("UART opened successfully on /dev/serial0")
+except Exception as e:
+    print(f"Failed to open UART: {e}")
+    ser = None
+```
+
+**Note:**  
+- On most modern Raspberry Pi OS, `/dev/serial0` is the alias for the primary UART on GPIO 14/15.  
+- You must first enable the serial port in `raspi-config` → Interface Options → Serial Port → **No** to login shell, **Yes** to serial hardware. Reboot after changing.
+
+### 2. Define your three hex packets
+
+Add this somewhere in the global config section (e.g. after the UART setup above):
+
+```python
+# Three hex packets to send (example - replace with your actual packets)
+PACKET1 = bytes.fromhex("AA 55 01 03 0F")      # Example packet 1 (5 bytes)
+PACKET2 = bytes.fromhex("AA 55 02 0A 1B 2C")   # Example packet 2 (6 bytes)
+PACKET3 = bytes.fromhex("AA 55 03 FF")         # Example packet 3 (4 bytes)
+
+# Or define them as byte literals if you prefer:
+# PACKET1 = b'\xAA\x55\x01\x03\x0F'
+```
+
+Replace the hex values inside `bytes.fromhex(...)` with the exact three packets you want to send.
+
+### 3. Add code to actually send the packets
+
+The best place is inside the main loop, right after the Bluetooth send block (around where the Bluetooth `if bt_sock is not None:` section ends). This keeps sending at a controlled rate without flooding the UART.
+
+Add this after the Bluetooth sending code:
+
+```python
+    # =========================
+    # PHYSICAL UART SEND - THREE HEX PACKETS
+    # =========================
+    if ser is not None and (now - bt_last_send) >= (1.0 / BT_HZ):  # reuse the same ~20 Hz timing as Bluetooth
+        try:
+            ser.write(PACKET1)
+            ser.write(PACKET2)
+            ser.write(PACKET3)
+            # Optional: flush to make sure data is sent immediately
+            ser.flush()
+        except Exception as e:
+            print(f"UART write error: {e}")
+            # Optionally close and reopen on error, but keep simple for now
+```
+
+This will send all **three packets** roughly 20 times per second (same rate as the Bluetooth stream).  
+If you want a slower rate, change the condition or add your own timer variable.
+
+### 4. Clean shutdown (add at the very end, before `pygame.quit()`)
+
+Modify the existing try/except shutdown block like this:
+
+```python
+try:
+    if bt_sock is not None:
+        bt_sock.close()
+    if 'ser' in locals() and ser is not None:
+        ser.close()          # <-- ADD THIS
+        print("UART port closed cleanly")
+except Exception:
+    pass
+
+pygame.quit()
+sys.exit()
+```
+
+### Full minimal addition summary (copy-paste order)
+
+1. `import serial`
+2. The `ser = serial.Serial(...)` block
+3. The three `PACKET1/2/3 = bytes.fromhex(...)` definitions
+4. The sending block inside the main `while running:` loop
+5. The `ser.close()` in the shutdown section
+
+### Quick test tip
+After adding, run the script and use a logic analyzer, USB-to-TTL adapter, or another device on the RX pin to verify the three packets are coming out repeatedly.
+
+Would you like me to:
+- Give you a version with a custom send rate (e.g. once per second)?
+- Make the packets dynamic (include current power, rod position, n, etc.)?
+- Add checksum calculation if your protocol needs one?
+
+Just tell me the exact three hex packets (or the format) and any timing requirements, and I can refine the code for you.

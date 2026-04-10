@@ -16,7 +16,7 @@ using namespace std::chrono_literals;
 byte mac[] = {0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED };
 
 // IP address
-IPAddress ip(134, 50, 51, 21);
+IPAddress ip(134, 50, 51, 22);
 IPAddress piIP(134, 50, 51, 24);
 EthernetServer server(80);
 
@@ -455,18 +455,28 @@ void loop() {
 
 
     //Test code for serial USB comms
-    //TX and RX comms
-    // Serial.println(packet1);                   //1st set of digital inputs
-    // Serial.println(packet2);                   //2nd set of digital inputs
-    // Serial.println(highByte(positionSet));     //Sets position of the control rod
-    // Serial.println(lowByte(positionSet));
-    // Serial.println(highByte(positionRead));    //Reads the position of the control rod
-    // Serial.println(lowByte(positionRead));
-    // Serial.println(highByte(rotaryKnob1Read)); //For the knob on the control panel
-    // Serial.println(lowByte(rotaryKnob1Read));
-    // Serial.println(highByte(rotaryKnob2Read)); //For the other knob of the control panel
-    // Serial.println(lowByte(rotaryKnob2Read));
-    // Serial.println(24);
+   // === NEW: Proper framed packet (start + length + payload + checksum) ===
+  Serial.write(0x24);                    // Start byte (same as your command protocol)
+  Serial.write(10);                      // Payload length = 10 bytes (fixed)
+
+  Serial.write(packet1);
+  Serial.write(packet2);
+  Serial.write(highByte(positionSet));
+  Serial.write(lowByte(positionSet));
+  Serial.write(highByte(positionRead));
+  Serial.write(lowByte(positionRead));
+  Serial.write(highByte(rotaryKnob1Read));
+  Serial.write(lowByte(rotaryKnob1Read));
+  Serial.write(highByte(rotaryKnob2Read));
+  Serial.write(lowByte(rotaryKnob2Read));
+
+  // Simple checksum (XOR of the 10 payload bytes)
+  uint8_t checksum = packet1 ^ packet2 ^
+                     highByte(positionSet) ^ lowByte(positionSet) ^
+                     highByte(positionRead) ^ lowByte(positionRead) ^
+                     highByte(rotaryKnob1Read) ^ lowByte(rotaryKnob1Read) ^
+                     highByte(rotaryKnob2Read) ^ lowByte(rotaryKnob2Read);
+  Serial.write(checksum);
   }
 
   // ==================== ETHERNET JSON WEB SERVER RESPONSE ====================
