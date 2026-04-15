@@ -56,13 +56,13 @@ bool controlPin = false; //Controls were tied to pin 7 but now run off of a vari
 //Digital Output Variables--------------------------------------
 
 //PWM motor outputs
-const uint8_t stepPin = 3;            //Outputs the PWM signal
 const uint8_t dirPin = 2;             //Ties to the positive direction pin of the stepper driver
+const uint8_t stepPin = 3;            //Outputs the PWM signal
 const uint8_t _dirPin = 4;            //Ties to the negative direction pin of the stepper driver
 const uint8_t motorInterfaceType = 1; //Proprietary motor type for the header file
 
 //Variables for movement adjustments on the stepper
-const float stepsPerRevolution = 6400.0;    //This is tied to the stepper driver switch settings
+const float stepsPerRevolution = 1600.0;    //This is tied to the stepper driver switch settings
 AccelStepper stepper = AccelStepper(motorInterfaceType, stepPin, dirPin);
 
 //Serial variables HYSTERESIS
@@ -261,9 +261,9 @@ void loop() {
 
   if (abs((int)positionSet - lastPositionSet) >= hysteresis) {    //Provides smooth stepping and RPM control
     lastPositionSet = positionSet;
-
-    float targetRPM = positionSet / 50;
-    float stepsPerSecond = targetRPM * stepsPerRevolution / 50.0;   //Target RPM in charge of changing speed
+    float rpm = 22.0;
+    float targetRPM = positionSet / 150;
+    float stepsPerSecond = rpm * stepsPerRevolution / 50.0;   //Target RPM in charge of changing speed
     stepper.setSpeed(stepsPerSecond);
   }
 

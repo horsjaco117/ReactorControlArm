@@ -1,37 +1,6 @@
 #include <AccelStepper.h>
 #include <SPI.h>
 #include <Ethernet.h>
-#include <ArduinoJson.h>
-#include <mbed.h>
-
-//Moving SPI pins
-//#define SPI SPI1   // Redirect default SPI to the Uno-style pins
-
-//STM hardware Timer
-mbed::Ticker stepperTicker;
-using namespace std::chrono_literals;
-
-//Ethernet Communication
-//MAC address
-byte mac[] = {0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED };
-
-// IP address
-IPAddress ip(134, 50, 51, 22);
-IPAddress piIP(134, 50, 51, 24);
-EthernetServer server(80);
-
-// === NEW: Settings for periodic push to Pi ===
-const uint16_t piPort = 6006;                    // Port your Pi is listening on
-const unsigned long pushIntervalMs = 1000;       // Send JSON to Pi every 1 second (adjust as needed)
-unsigned long lastPushTime = 0;
-
-// NEW: Track Ethernet link status so we NEVER call connect() when cable is unplugged
-// This completely eliminates the long blocking delays you were seeing.
-bool ethernetLinkUp = false;
-unsigned long lastLinkCheck = 0;
-
-//SPI to normal side pins
-const int CS_Pin = 10;
 
 //All Variables
 //Analog input variables---------------------------------------------------------
@@ -82,14 +51,14 @@ unsigned long debounceDelay = 50;
 //End of test variables ^-----------------------
 
 //PWM input
-volatile bool controlPin = false; //Controls were tied to pin 7 but now run off of a variable
+bool controlPin = false; //Controls were tied to pin 7 but now run off of a variable
 
 //Digital Output Variables--------------------------------------
 
 //PWM motor outputs
-const uint8_t stepPin = 6;            //Outputs the PWM signal
-const uint8_t dirPin = 5;             //Ties to the positive direction pin of the stepper driver
-const uint8_t _dirPin = 7;            //Ties to the negative direction pin of the stepper driver
+const uint8_t stepPin = 3;            //Outputs the PWM signal
+const uint8_t dirPin = 2;             //Ties to the positive direction pin of the stepper driver
+const uint8_t _dirPin = 4;            //Ties to the negative direction pin of the stepper driver
 const uint8_t motorInterfaceType = 1; //Proprietary motor type for the header file
 
 //Variables for movement adjustments on the stepper
@@ -99,13 +68,6 @@ AccelStepper stepper = AccelStepper(motorInterfaceType, stepPin, dirPin);
 //Serial variables HYSTERESIS
 unsigned long lastTxTime = 0;             //Two transmission variable for more stable sending
 const unsigned long txIntervalMs = 200;
-
-//Call function for the stepper motor
-void updateMotor() {
-  if (controlPin) {
-    stepper.runSpeed();
-  }
-}
 
 void setup() {//Digital Input Setup
   //Digital input setup--------------------------------------------------------------------------
@@ -123,9 +85,9 @@ void setup() {//Digital Input Setup
   pinMode(46, INPUT);              //Tells the controller desired speed option
 
   //Digital input for PWM and stepper
-  pinMode(5, OUTPUT);             //Connects to +Dir of Stepper Driver
-  pinMode(6, OUTPUT);             //Connects to +Pul of Stepper Driver
-  pinMode(7,OUTPUT);              //Connects to _Dir of Stepper Driver
+  pinMode(3, OUTPUT);
+  pinMode(4, OUTPUT);
+  pinMode(5,OUTPUT);
 
   
   //Analog input setup---------------------------------------------------------------------------------
@@ -134,77 +96,18 @@ void setup() {//Digital Input Setup
   pinMode(A2, INPUT);               //Analog voltage indicating position of the rotary knob
   pinMode(A3, INPUT);               //Analog voltage indicating position of the second rotary knob
 
-
-//SPI test
-  pinMode(CS_Pin, OUTPUT);
-  digitalWrite(CS_Pin, HIGH);
-
   // Stepper configuration (moved here - only needs to run once)
-  stepper.setMaxSpeed(12800.0);     //Max Speed
-  stepper.setAcceleration(6400.0);  //Acceleration
-  stepper.setMinPulseWidth(5);      //Pulse width config for the Timers
+  stepper.setMaxSpeed(12800.0);
+  stepper.setAcceleration(6400.0);
+  stepper.setMinPulseWidth(5);
 
   //Serial setup------------------------------------------
-  Serial1.begin(9600);       //Tx Pin        
-  Serial.begin(9600);       // USB debugging
-
-  Serial.println("Ethernet WebServerExample");
-
-  //Ethernet Setup
-  Ethernet.begin(mac, ip);
-
-  // OuterSPI pins
-  SPI1.begin();
-
-  // pinMode(SPI_CS_PIN, OUTPUT);
-  // digitalWrite(SPI_CS_PIN, HIGH);
-  
-  // Example transaction
-  SPI1.beginTransaction(SPISettings(1000000, MSBFIRST, SPI_MODE0));
-
-  //Middle Pins for SPI
-  SPI.beginTransaction(SPISettings(14000000, MSBFIRST, SPI_MODE0));  // optional tuning
-// But more importantly, use shorter transactions if possible
-
- // Check for Ethernet hardware present
-  if (Ethernet.hardwareStatus() == EthernetNoHardware) {
-    Serial.println("Ethernet shield was not found.  Sorry, can't run without hardware. :(");
-    while (true) {
-      delay(1); // do nothing, no point running without Ethernet hardware
-    }
-  }
-  if (Ethernet.linkStatus() == LinkOFF) {
-    Serial.println("Ethernet cable is not connected.");
-  }
-
-  // start the server
-  server.begin();
-  Serial.print("server is at ");
-  Serial.println(Ethernet.localIP());
-
-  // === TUNED ETHERNET TIMEOUTS + INITIAL LINK STATUS ===
-  // These two lines make failed connect() calls return in ~100 ms instead of many seconds
-  Ethernet.setRetransmissionTimeout(50);
-  Ethernet.setRetransmissionCount(2);
-
-  // Record initial link state (will be re-checked every 500 ms in loop)
-  ethernetLinkUp = (Ethernet.linkStatus() == LinkON);
-
-  //More SPI stuff
-  // Set timeout to a very small number (e.g., 50ms) and retries to 1
-  //Ethernet.setRetransmissionTimeout(50);
-  //Ethernet.setRetransmissionCount(1);
-
-  //Hardware Timer Setup stuff
-  // Start the hardware timer at the end of setup().
-  // This tells the Giga to run updateMotor() every 50 microseconds.
-  stepperTicker.attach(&updateMotor, 50us);
-
+  Serial1.begin(115200);       //Tx Pin        
+  Serial.begin(115200);       // USB debugging
+  //Serial1.begin(115200, SERIAL_8N1);  // TX1 output 1, 9600 baude, 8 bit packets, no parity bit
 }
 
 void loop() {
-
-  //Boolean Assignments for the digital input pins
   bool currentScramReading = digitalRead(scramPin);
   bool currentPowerReading = digitalRead(powerPin);
   bool currentMagnetReading = digitalRead(electromagnetPin);
@@ -214,10 +117,9 @@ void loop() {
   bool currentPosMaxReading = digitalRead(rodPositionMaxPin);
   bool currentSpeedReading = digitalRead(speedPin);
 
-  //This is for the Serial
   static unsigned long lastSyncTime = 0;
   
-  //Logic for toggling buttons as latched
+  //Logic for latching buttons
   if (currentScramReading == LOW && lastScramButtonReading == HIGH) {
     if ((millis() - lastDebounceTime) > debounceDelay) {
       scramToggledState = !scramToggledState;
@@ -291,6 +193,66 @@ void loop() {
   }
   lastSpeedButtonReading = currentSpeedReading; 
 
+  // ==================== RECEIVE COMMANDS FROM SERIAL MONITOR (USB Serial) ====================
+if (Serial.available() > 0) {
+  String command = Serial.readStringUntil('\n');   // Read until newline (Enter key)
+  command.trim();                                  // Remove whitespace/newlines
+
+  if (command.length() == 0) return;
+
+  //Serial.print("Received: ");
+  //Serial.println(command);   // Echo back for debugging
+
+  // === Simple text commands - very easy to type in Serial Monitor ===
+  
+  if (command.equalsIgnoreCase("scram") || command.equalsIgnoreCase("s")) {
+    scramToggledState = !scramToggledState;
+    //Serial.println("SCRAM toggled");
+  }
+  else if (command.equalsIgnoreCase("power") || command.equalsIgnoreCase("p")) {
+    powerToggledState = !powerToggledState;
+   // Serial.println("Power toggled");
+  }
+  else if (command.equalsIgnoreCase("magnet") || command.equalsIgnoreCase("m")) {
+    magnetToggledState = !magnetToggledState;
+    //Serial.println("Magnet toggled");
+  }
+  else if (command.equalsIgnoreCase("forward") || command.equalsIgnoreCase("f")) {
+    forwardToggledState = !forwardToggledState;
+   // Serial.println("Forward toggled");
+  }
+  else if (command.equalsIgnoreCase("backward") || command.equalsIgnoreCase("b")) {
+    backwardToggledState = !backwardToggledState;
+   // Serial.println("Backward toggled");
+  }
+  else if (command.equalsIgnoreCase("min") || command.equalsIgnoreCase("minpos")) {
+    posMinToggledState = !posMinToggledState;
+    //Serial.println("Min position toggled");
+  }
+  else if (command.equalsIgnoreCase("max") || command.equalsIgnoreCase("maxpos")) {
+    posMaxToggledState = !posMaxToggledState;
+   // Serial.println("Max position toggled");
+  }
+  else if (command.equalsIgnoreCase("speed") || command.equalsIgnoreCase("sp")) {
+    speedToggledState = !speedToggledState;
+    //Serial.println("Speed toggled");
+  }
+  else if (command.startsWith("help")) {
+    Serial.println("Available commands:");
+    Serial.println("  scram / s     - toggle SCRAM");
+    Serial.println("  power / p     - toggle Power");
+    Serial.println("  magnet / m    - toggle Magnet");
+    Serial.println("  forward / f   - toggle Forward");
+    Serial.println("  backward / b  - toggle Backward");
+    Serial.println("  min / minpos  - toggle Min Position");
+    Serial.println("  max / maxpos  - toggle Max Position");
+    Serial.println("  speed / sp    - toggle Speed");
+  }
+  else {
+    //Serial.println("Unknown command. Type 'help' for list.");
+  }
+}
+
    // ==================== SERIAL READ WITH 0x24 FF VERIFICATION ====================
   // Only flips the toggled states when it receives the exact sequence: 0x24 followed by 0xFF,
   // then the flipMask byte.
@@ -302,14 +264,12 @@ void loop() {
 
     switch (serialState) {
       case IDLE:
-      //First handshake byte
         if (incoming == 0x24) {
           serialState = SAW_24;
         }
         break;
 
       case SAW_24:
-      //Second Handshake byte
         if (incoming == 0xFF) {
           serialState = SAW_FF;        // Ready for the flipMask
         } else {
@@ -321,7 +281,6 @@ void loop() {
         // This byte is the flipMask — apply the flips
         uint8_t flipMask = incoming;
 
-        //Same as previous latching sequence but it changes with the digital serial is received
         if (flipMask & (1 << 0)) scramToggledState   = !scramToggledState;
         if (flipMask & (1 << 1)) powerToggledState   = !powerToggledState;
         if (flipMask & (1 << 2)) magnetToggledState  = !magnetToggledState;
@@ -339,12 +298,12 @@ void loop() {
   // 4. Stepper Motor Update
   // Keep runSpeed() outside of an IF if possible, or ensure controlPin is reliable
   if(controlPin) {
-    //stepper.runSpeed();
+    stepper.runSpeed();
   }
 
   //Define variable again---------------------------------
   uint8_t packet1 = 0;              //Packet that sends the digital bytes (See packet setup below) 8 bit data
-  uint8_t packet2 = 0;              //I ran out of space so this has the speed indicator
+  uint8_t packet2 = 0;
   uint16_t positionSet = 0;         //Packet that sends where to set the position voltage set as 16 bits the controller only sends 10 bits
   uint16_t positionRead = 0;        //Packet that sends where the position voltage is. Set as 16 bits only sends 10 bits
   uint16_t rotaryKnob1Read = 0;     //Packet that sends the 1st rotary knob voltage. Set as 16 bits only sends 10 bits
@@ -364,7 +323,7 @@ void loop() {
     lastPositionSet = positionSet;
 
     float targetRPM = positionSet / 50;
-    float stepsPerSecond = targetRPM * stepsPerRevolution / 25.0;   //Target RPM in charge of changing speed
+    float stepsPerSecond = targetRPM * stepsPerRevolution / 50.0;   //Target RPM in charge of changing speed
     stepper.setSpeed(stepsPerSecond);
   }
 
@@ -425,14 +384,6 @@ void loop() {
 
   //Test serial code 
   unsigned long now = millis();
-
-  // NEW: Fast, non-blocking link status check (runs every 500 ms)
-  // This keeps ethernetLinkUp accurate without any delay.
-  if (now - lastLinkCheck >= 500) {
-    lastLinkCheck = now;
-    ethernetLinkUp = (Ethernet.linkStatus() == LinkON);
-  }
-
   if (now - lastTxTime >= txIntervalMs) {
     lastTxTime = now;
 
@@ -453,136 +404,17 @@ void loop() {
     Serial1.write(lowByte(rotaryKnob2Read));
     Serial1.write(0b00100100);
 
-
-    //Test code for serial USB comms
-   // === NEW: Proper framed packet (start + length + payload + checksum) ===
-  Serial.println(0x24);                    // Start byte (same as your command protocol)
-  Serial.println(10);                      // Payload length = 10 bytes (fixed)
-
-  Serial.println(packet1);
-  Serial.println(packet2);
-  Serial.println(highByte(positionSet));
-  Serial.println(lowByte(positionSet));
-  Serial.println(highByte(positionRead));
-  Serial.println(lowByte(positionRead));
-  Serial.println(highByte(rotaryKnob1Read));
-  Serial.println(lowByte(rotaryKnob1Read));
-  Serial.println(highByte(rotaryKnob2Read));
-  Serial.println(lowByte(rotaryKnob2Read));
-
-  // Simple checksum (XOR of the 10 payload bytes)
-  uint8_t checksum = packet1 ^ packet2 ^
-                     highByte(positionSet) ^ lowByte(positionSet) ^
-                     highByte(positionRead) ^ lowByte(positionRead) ^
-                     highByte(rotaryKnob1Read) ^ lowByte(rotaryKnob1Read) ^
-                     highByte(rotaryKnob2Read) ^ lowByte(rotaryKnob2Read);
-  Serial.write(checksum);
+    //USB comms
+    Serial.write(packet1);                   //1st set of digital inputs
+    Serial.write(packet2);                   //2nd set of digital inputs
+    Serial.write(highByte(positionSet));     //Sets position of the control rod
+    Serial.write(lowByte(positionSet));
+    Serial.write(highByte(positionRead));    //Reads the position of the control rod
+    Serial.write(lowByte(positionRead));
+    Serial.write(highByte(rotaryKnob1Read)); //For the knob on the control panel
+    Serial.write(lowByte(rotaryKnob1Read));
+    Serial.write(highByte(rotaryKnob2Read)); //For the other knob of the control panel
+    Serial.write(lowByte(rotaryKnob2Read));
+    Serial.write(0b00100100);
   }
-
-  // ==================== ETHERNET JSON WEB SERVER RESPONSE ====================
-  // listen for incoming clients
-  EthernetClient client = server.available();
-  if (client) {
-    Serial.println("new client");
-    // an http request ends with a blank line
-    boolean currentLineIsBlank = true;
-    while (client.connected()) {
-      //stepper.runSpeed(); //This ensure the Stepper motor runs while connected to etherenet
-      if (client.available()) {
-        char c = client.read();
-        Serial.write(c);
-        // if you've gotten to the end of the line (received a newline
-        // character) and the line is blank, the http request has ended,
-        // so you can send a reply
-        if (c == '\n' && currentLineIsBlank) {
-          // === JSON RESPONSE INSTEAD OF HTML TABLE ===
-          client.println("HTTP/1.1 200 OK");
-          client.println("Content-Type: application/json");
-          client.println("Connection: close");  
-          client.println("Access-Control-Allow-Origin: *"); // Allows cross-origin requests (useful for testing)
-          client.println();
-
-          // Build JSON document with all relevant data
-          StaticJsonDocument<384> doc;
-
-          doc["scram"]          = scramToggledState;
-          doc["power"]          = powerToggledState;
-          doc["magnet"]         = magnetToggledState;
-          doc["forward"]        = forwardActive;
-          doc["backward"]       = backwardActive;
-          doc["pos_min"]        = minPositionActive;
-          doc["pos_max"]        = maxPositionActive;
-          doc["fast_slow"]      = fast_Slow;
-          doc["control_active"] = controlPin;
-
-          doc["position_set"]   = positionSet;
-          doc["position_read"]  = positionRead;
-          doc["knob1"]          = rotaryKnob1Read;
-          doc["knob2"]          = rotaryKnob2Read;
-
-          doc["packet1"]        = packet1;
-          doc["packet2"]        = packet2;
-          doc["timestamp"]      = millis();
-
-          // Send the JSON directly over Ethernet
-          serializeJson(doc, client);
-          client.println();
-
-          break;
-        }
-        if (c == '\n') {
-          // you're starting a new line
-          currentLineIsBlank = true;
-        } else if (c != '\r') {
-          // you've gotten a character on the current line
-          currentLineIsBlank = false;
-        }
-      }
-    }
-    // give the web browser time to receive the data
-    delay(1);
-    // close the connection:
-    client.stop();
-    Serial.println("client disconnected");
   }
-
-  // ==================== PERIODIC PUSH TO PI (NOW SAFE WHEN CABLE UNPLUGGED) ====================
-  // Only attempt connect() when we know the link is up.
-  // This removes the multi-second blocking delays you saw.
-  if (ethernetLinkUp && (now - lastPushTime >= pushIntervalMs)) {
-    lastPushTime = now;
-
-    EthernetClient outgoing;
-    if (outgoing.connect(piIP, piPort)) {
-      StaticJsonDocument<384> doc;
-
-      //JSON stuff and organizing through SPI to Ethernet
-
-      doc["scram"]          = scramToggledState;
-      doc["power"]          = powerToggledState;
-      doc["magnet"]         = magnetToggledState;
-      doc["forward"]        = forwardActive;
-      doc["backward"]       = backwardActive;
-      doc["pos_min"]        = minPositionActive;
-      doc["pos_max"]        = maxPositionActive;
-      doc["fast_slow"]      = fast_Slow;
-      doc["control_active"] = controlPin;
-      doc["position_set"]   = positionSet;
-      doc["position_read"]  = positionRead;
-      doc["knob1"]          = rotaryKnob1Read;
-      doc["knob2"]          = rotaryKnob2Read;
-      doc["packet1"]        = packet1;
-      doc["packet2"]        = packet2;
-      doc["timestamp"]      = millis();
-
-      serializeJson(doc, outgoing);
-      outgoing.println();        // Makes it easy for Pi to read line-by-line
-      outgoing.stop();           // Important: close after sending
-
-      Serial.println("Pushed JSON to Pi");
-    } else {
-      ethernetLinkUp = false;    // Immediately mark link as down so we skip future attempts until it comes back
-      //Serial.println("Failed to connect to Pi for push");
-    }
-  }
-}
