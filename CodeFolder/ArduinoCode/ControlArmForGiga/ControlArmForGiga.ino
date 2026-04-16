@@ -4,58 +4,55 @@
 #include <ArduinoJson.h>
 #include <mbed.h>
 
-//Moving SPI pins
-//#define SPI SPI1   // Redirect default SPI to the Uno-style pins
-
-//STM hardware Timer
-mbed::Ticker stepperTicker;
 using namespace std::chrono_literals;
 
-//Ethernet Communication
-//MAC address
-byte mac[] = {0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED };
-
-// IP address
+// ======================== ETHERNET CONFIG ========================
+byte mac[] = {0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED};
 IPAddress ip(134, 50, 51, 22);
 IPAddress piIP(134, 50, 51, 24);
 EthernetServer server(80);
+EthernetServer commandServer(5005);
 
-// === NEW: Settings for periodic push to Pi ===
-const uint16_t piPort = 6006;                    // Port your Pi is listening on
-const unsigned long pushIntervalMs = 1000;       // Send JSON to Pi every 1 second (adjust as needed)
+const uint16_t piPort = 6006;
+const unsigned long pushIntervalMs = 20;
 unsigned long lastPushTime = 0;
 
-// NEW: Track Ethernet link status so we NEVER call connect() when cable is unplugged
-// This completely eliminates the long blocking delays you were seeing.
 bool ethernetLinkUp = false;
 unsigned long lastLinkCheck = 0;
-
-//SPI to normal side pins
 const int CS_Pin = 10;
 
-//All Variables
-//Analog input variables---------------------------------------------------------
-int positionSetPin = A0;      //The position set voltage wire needs to go to A0
-int positionReadPin = A1;     //The position read voltage wire needs to go to A1
-int rotaryKnobReadPin1 = A2;  //The rotaryknob1 voltage wire needs to go to A2
-int rotaryKnobReadPin2 = A3;  //The rotaryknob2 voltage wire needs to go to A3
+// ======================== SERIAL CONFIG ========================
+unsigned long lastTxTime = 0; 
+const unsigned long txIntervalMs = 200;
 
-//Digital input variables -------------------------------------------------------
+// ======================== HARDWARE PINS ========================
+// Analog input pins
+int positionSetPin = A0;
+int positionReadPin = A1;
+int rotaryKnobReadPin1 = A2;
+int rotaryKnobReadPin2 = A3;
 
-//packet 1
-int scramPin = 53;          //Wire the SCRAM button to this pin
-int powerPin = 52;          //Wire the software power button to this pin
-int electromagnetPin = 51;  //Wire the button for the electromagnet to this pin
-int forwardPin = 50;        //Wire the part of switch to move forward to this pin
-int backwardPin = 49;       //Wire the part of switch to move backward to this pin
-int rodPositionMinPin = 48; //Wire the min rod position to this pin
-int rodPositionMaxPin = 47; //Wire the max rod position to this pin
+// Digital input pins - Packet 1
+int scramPin = 53;
+int powerPin = 52;
+int electromagnetPin = 51;
+int forwardPin = 50;
+int backwardPin = 49;
+int rodPositionMinPin = 48;
+int rodPositionMaxPin = 47;
 
-//packet 2
-int speedPin = 46;          //Wire the switch that determines speed to this pin
+// Digital input pins - Packet 2
+int speedPin = 46;
 
-//Test variables--------------------------------------------------------------------
-//Sets default for the variable tracking button states
+// Stepper Hardware (Using pins from Serial sketch)
+const uint8_t stepPin = 6;
+const uint8_t dirPin = 5;
+const uint8_t _dirPin = 7;
+const uint8_t motorInterfaceType = 1;
+const float stepsPerRevolution = 6400.0;
+
+// ======================== STATE VARIABLES ========================
+// Latched (toggled) states
 bool scramToggledState = false;
 bool powerToggledState = false;
 bool magnetToggledState = false;
@@ -65,9 +62,9 @@ bool posMinToggledState = false;
 bool posMaxToggledState = false;
 bool speedToggledState = false;
 
-//Other set of variables to track button states
+// Button debouncing states
 bool lastScramButtonReading = HIGH;
-bool lastPowerButtonReading = HIGH; 
+bool lastPowerButtonReading = HIGH;
 bool lastMagnetButtonReading = HIGH;
 bool lastForwardButtonReading = HIGH;
 bool lastBackwardButtonReading = HIGH;
@@ -75,136 +72,80 @@ bool lastPosMinButtonReading = HIGH;
 bool lastPosMaxButtonReading = HIGH;
 bool lastSpeedButtonReading = HIGH;
 
-//Software Debounce
 unsigned long lastDebounceTime = 0;
-unsigned long debounceDelay = 50;
+const unsigned long debounceDelay = 50;
 
-//End of test variables ^-----------------------
-
-//PWM input
-volatile bool controlPin = false; //Controls were tied to pin 7 but now run off of a variable
-
-//Digital Output Variables--------------------------------------
-
-//PWM motor outputs
-const uint8_t stepPin = 6;            //Outputs the PWM signal
-const uint8_t dirPin = 5;             //Ties to the positive direction pin of the stepper driver
-const uint8_t _dirPin = 7;            //Ties to the negative direction pin of the stepper driver
-const uint8_t motorInterfaceType = 1; //Proprietary motor type for the header file
-
-//Variables for movement adjustments on the stepper
-const float stepsPerRevolution = 6400.0;    //This is tied to the stepper driver switch settings
+// ======================== MOTOR SETUP ========================
+volatile bool controlPin = false; 
 AccelStepper stepper = AccelStepper(motorInterfaceType, stepPin, dirPin);
+mbed::Ticker stepperTicker;
 
-//Serial variables HYSTERESIS
-unsigned long lastTxTime = 0;             //Two transmission variable for more stable sending
-const unsigned long txIntervalMs = 200;
-
-//Call function for the stepper motor
+// Hardware timer for stepper (non-blocking)
 void updateMotor() {
   if (controlPin) {
     stepper.runSpeed();
   }
 }
 
-void setup() {//Digital Input Setup
-  //Digital input setup--------------------------------------------------------------------------
+void setup() {
+  // --- Pin Setup ---
+  pinMode(scramPin, INPUT);
+  pinMode(powerPin, INPUT);
+  pinMode(electromagnetPin, INPUT);
+  pinMode(forwardPin, INPUT);
+  pinMode(backwardPin, INPUT);
+  pinMode(rodPositionMinPin, INPUT);
+  pinMode(rodPositionMaxPin, INPUT);
+  pinMode(speedPin, INPUT);
 
-  //Packet 1
-  pinMode(53, INPUT);              //Scram pin
-  pinMode(52, INPUT);              //Power pin
-  pinMode(51, INPUT);              //Electromagnet pin
-  pinMode(50, INPUT);              //Tells Arm to move forward
-  pinMode(49, INPUT);              //Tells arm to move backward
-  pinMode(48, INPUT);              //Tells the controller max position has been reached
-  pinMode(47, INPUT);              //Tells the controller the min position has been reached
+  pinMode(stepPin, OUTPUT);
+  pinMode(dirPin, OUTPUT);
+  pinMode(_dirPin, OUTPUT);
+  pinMode(5, OUTPUT); // Kept from Serial sketch
 
-  //Packet 2
-  pinMode(46, INPUT);              //Tells the controller desired speed option
+  pinMode(positionSetPin, INPUT);
+  pinMode(positionReadPin, INPUT);
+  pinMode(rotaryKnobReadPin1, INPUT);
+  pinMode(rotaryKnobReadPin2, INPUT);
 
-  //Digital input for PWM and stepper
-  pinMode(5, OUTPUT);             //Connects to +Dir of Stepper Driver
-  pinMode(6, OUTPUT);             //Connects to +Pul of Stepper Driver
-  pinMode(7,OUTPUT);              //Connects to _Dir of Stepper Driver
-
-  
-  //Analog input setup---------------------------------------------------------------------------------
-  pinMode(A0,INPUT);                //Analog position for the control rod
-  pinMode(A1, INPUT);               //Analog voltage indicating the position of the rod
-  pinMode(A2, INPUT);               //Analog voltage indicating position of the rotary knob
-  pinMode(A3, INPUT);               //Analog voltage indicating position of the second rotary knob
-
-
-//SPI test
   pinMode(CS_Pin, OUTPUT);
   digitalWrite(CS_Pin, HIGH);
 
-  // Stepper configuration (moved here - only needs to run once)
-  stepper.setMaxSpeed(12800.0);     //Max Speed
-  stepper.setAcceleration(6400.0);  //Acceleration
-  stepper.setMinPulseWidth(5);      //Pulse width config for the Timers
+  // --- Stepper Config ---
+  stepper.setMaxSpeed(12800.0);
+  stepper.setAcceleration(6400.0);
+  stepper.setMinPulseWidth(5);
 
-  //Serial setup------------------------------------------
-  Serial1.begin(9600);       //Tx Pin        
-  Serial.begin(9600);       // USB debugging
+  // --- Serial Setup ---
+  Serial.begin(115200);   // USB
+  Serial1.begin(115200);  // Hardware TX/RX
+  Serial.setTimeout(10);  // Prevents USB string reading from lagging the Ethernet loop
 
-  Serial.println("Ethernet WebServerExample");
-
-  //Ethernet Setup
+  // --- Ethernet Setup ---
   Ethernet.begin(mac, ip);
-
-  // OuterSPI pins
-  SPI1.begin();
-
-  // pinMode(SPI_CS_PIN, OUTPUT);
-  // digitalWrite(SPI_CS_PIN, HIGH);
+  SPI1.begin(); 
   
-  // Example transaction
   SPI1.beginTransaction(SPISettings(1000000, MSBFIRST, SPI_MODE0));
+  SPI.beginTransaction(SPISettings(14000000, MSBFIRST, SPI_MODE0));
 
-  //Middle Pins for SPI
-  SPI.beginTransaction(SPISettings(14000000, MSBFIRST, SPI_MODE0));  // optional tuning
-// But more importantly, use shorter transactions if possible
-
- // Check for Ethernet hardware present
   if (Ethernet.hardwareStatus() == EthernetNoHardware) {
-    Serial.println("Ethernet shield was not found.  Sorry, can't run without hardware. :(");
-    while (true) {
-      delay(1); // do nothing, no point running without Ethernet hardware
-    }
-  }
-  if (Ethernet.linkStatus() == LinkOFF) {
-    Serial.println("Ethernet cable is not connected.");
+    Serial.println("Ethernet shield was not found.");
+    while (true) { delay(1); }
   }
 
-  // start the server
   server.begin();
-  Serial.print("server is at ");
-  Serial.println(Ethernet.localIP());
+  commandServer.begin();
 
-  // === TUNED ETHERNET TIMEOUTS + INITIAL LINK STATUS ===
-  // These two lines make failed connect() calls return in ~100 ms instead of many seconds
   Ethernet.setRetransmissionTimeout(50);
   Ethernet.setRetransmissionCount(2);
-
-  // Record initial link state (will be re-checked every 500 ms in loop)
   ethernetLinkUp = (Ethernet.linkStatus() == LinkON);
 
-  //More SPI stuff
-  // Set timeout to a very small number (e.g., 50ms) and retries to 1
-  //Ethernet.setRetransmissionTimeout(50);
-  //Ethernet.setRetransmissionCount(1);
-
-  //Hardware Timer Setup stuff
-  // Start the hardware timer at the end of setup().
-  // This tells the Giga to run updateMotor() every 50 microseconds.
+  // --- Attach Ticker ---
   stepperTicker.attach(&updateMotor, 50us);
-
 }
 
 void loop() {
-
-  //Boolean Assignments for the digital input pins
+  // ======================== 1. READ ALL PHYSICAL INPUTS ========================
   bool currentScramReading = digitalRead(scramPin);
   bool currentPowerReading = digitalRead(powerPin);
   bool currentMagnetReading = digitalRead(electromagnetPin);
@@ -214,30 +155,38 @@ void loop() {
   bool currentPosMaxReading = digitalRead(rodPositionMaxPin);
   bool currentSpeedReading = digitalRead(speedPin);
 
-  //This is for the Serial
-  static unsigned long lastSyncTime = 0;
-  
-  //Logic for toggling buttons as latched
+  uint16_t positionSet = analogRead(positionSetPin);
+  uint16_t positionRead = analogRead(positionReadPin);
+  uint16_t rotaryKnob1Read = analogRead(rotaryKnobReadPin1);
+  uint16_t rotaryKnob2Read = analogRead(rotaryKnobReadPin2);
+
+  // Active (unlatched) logic
+  bool scramActive = (currentScramReading == LOW);
+  bool powerActive = (currentPowerReading == LOW);
+  bool magnetActive = (currentMagnetReading == LOW);
+  bool forwardActive = (currentForwardReading == HIGH);
+  bool backwardActive = (currentBackwardReading == HIGH);
+  bool maxPositionActive = (currentPosMaxReading == HIGH);
+  bool minPositionActive = (currentPosMinReading == HIGH);
+  bool fast_Slow = (currentSpeedReading == LOW);
+
+  // ======================== 2. DEBOUNCE LATCHED BUTTONS ========================
   if (currentScramReading == LOW && lastScramButtonReading == HIGH) {
     if ((millis() - lastDebounceTime) > debounceDelay) {
       scramToggledState = !scramToggledState;
       lastDebounceTime = millis();
     }
   }
-
   lastScramButtonReading = currentScramReading;
 
-  // 2. Toggle Logic for Power
   if (currentPowerReading == LOW && lastPowerButtonReading == HIGH) {
     if ((millis() - lastDebounceTime) > debounceDelay) {
       powerToggledState = !powerToggledState; 
       lastDebounceTime = millis();
     }
   }
-  // This update MUST be outside the IF block to track the button release
   lastPowerButtonReading = currentPowerReading; 
 
-  // 3. Toggle Logic for Magnet
   if (currentMagnetReading == LOW && lastMagnetButtonReading == HIGH) {
     if ((millis() - lastDebounceTime) > debounceDelay) {
       magnetToggledState = !magnetToggledState; 
@@ -246,7 +195,6 @@ void loop() {
   }
   lastMagnetButtonReading = currentMagnetReading;
 
-  // 4. Toggle Logic for Forward Logic
   if (currentForwardReading == LOW && lastForwardButtonReading == HIGH) {
     if ((millis() - lastDebounceTime) > debounceDelay) {
       forwardToggledState = !forwardToggledState; 
@@ -255,7 +203,6 @@ void loop() {
   }
   lastForwardButtonReading = currentForwardReading; 
 
-    // 5. Toggle Logic for Backward Logic
   if (currentBackwardReading == LOW && lastBackwardButtonReading == HIGH) {
     if ((millis() - lastDebounceTime) > debounceDelay) {
       backwardToggledState = !backwardToggledState; 
@@ -264,7 +211,6 @@ void loop() {
   }
   lastBackwardButtonReading = currentBackwardReading; 
 
-    // 6. Toggle Logic for Minimum Position
   if (currentPosMinReading == LOW && lastPosMinButtonReading == HIGH) {
     if ((millis() - lastDebounceTime) > debounceDelay) {
       posMinToggledState = !posMinToggledState; 
@@ -273,8 +219,7 @@ void loop() {
   }
   lastPosMinButtonReading = currentPosMinReading; 
 
-    // 7. Toggle logic for maximum Position
-    if (currentPosMaxReading == LOW && lastPosMaxButtonReading == HIGH) {
+  if (currentPosMaxReading == LOW && lastPosMaxButtonReading == HIGH) {
     if ((millis() - lastDebounceTime) > debounceDelay) {
       posMaxToggledState = !posMaxToggledState; 
       lastDebounceTime = millis();
@@ -282,229 +227,154 @@ void loop() {
   }
   lastPosMaxButtonReading = currentPosMaxReading; 
 
-    // 8. Toggle logic for High or low speed
-    if (currentSpeedReading == LOW && lastSpeedButtonReading == HIGH) {
+  if (currentSpeedReading == LOW && lastSpeedButtonReading == HIGH) {
     if ((millis() - lastDebounceTime) > debounceDelay) {
       speedToggledState = !speedToggledState; 
       lastDebounceTime = millis();
     }
   }
-  lastSpeedButtonReading = currentSpeedReading; 
+  lastSpeedButtonReading = currentSpeedReading;
 
-   // ==================== SERIAL READ WITH 0x24 FF VERIFICATION ====================
-  // Only flips the toggled states when it receives the exact sequence: 0x24 followed by 0xFF,
-  // then the flipMask byte.
-  // This adds strong verification before any change is applied.
-  static enum { IDLE, SAW_24, SAW_FF } serialState = IDLE;
+  // ==================== 3. INCOMING USB SERIAL COMMANDS ====================
+  if (Serial.available() > 0) {
+    String command = Serial.readStringUntil('\n'); 
+    command.trim(); 
 
-  while (Serial1.available() > 0) {
-    uint8_t incoming = Serial1.read();
-
-    switch (serialState) {
-      case IDLE:
-      //First handshake byte
-        if (incoming == 0x24) {
-          serialState = SAW_24;
-        }
-        break;
-
-      case SAW_24:
-      //Second Handshake byte
-        if (incoming == 0xFF) {
-          serialState = SAW_FF;        // Ready for the flipMask
-        } else {
-          serialState = IDLE;          // Wrong second byte → reset
-        }
-        break;
-
-      case SAW_FF:
-        // This byte is the flipMask — apply the flips
-        uint8_t flipMask = incoming;
-
-        //Same as previous latching sequence but it changes with the digital serial is received
-        if (flipMask & (1 << 0)) scramToggledState   = !scramToggledState;
-        if (flipMask & (1 << 1)) powerToggledState   = !powerToggledState;
-        if (flipMask & (1 << 2)) magnetToggledState  = !magnetToggledState;
-        if (flipMask & (1 << 3)) forwardToggledState = !forwardToggledState;
-        if (flipMask & (1 << 4)) backwardToggledState = !backwardToggledState;
-        if (flipMask & (1 << 5)) posMinToggledState  = !posMinToggledState;
-        if (flipMask & (1 << 6)) posMaxToggledState  = !posMaxToggledState;
-        if (flipMask & (1 << 7)) speedToggledState   = !speedToggledState;
-
-        serialState = IDLE;   // Reset for next command
-        break;
+    if (command.length() > 0) {
+      if (command.equalsIgnoreCase("scram") || command.equalsIgnoreCase("s")) scramToggledState = !scramToggledState;
+      else if (command.equalsIgnoreCase("power") || command.equalsIgnoreCase("p")) powerToggledState = !powerToggledState;
+      else if (command.equalsIgnoreCase("magnet") || command.equalsIgnoreCase("m")) magnetToggledState = !magnetToggledState;
+      else if (command.equalsIgnoreCase("forward") || command.equalsIgnoreCase("f")) forwardToggledState = !forwardToggledState;
+      else if (command.equalsIgnoreCase("backward") || command.equalsIgnoreCase("b")) backwardToggledState = !backwardToggledState;
+      else if (command.equalsIgnoreCase("min") || command.equalsIgnoreCase("minpos")) posMinToggledState = !posMinToggledState;
+      else if (command.equalsIgnoreCase("max") || command.equalsIgnoreCase("maxpos")) posMaxToggledState = !posMaxToggledState;
+      else if (command.equalsIgnoreCase("speed") || command.equalsIgnoreCase("sp")) speedToggledState = !speedToggledState;
+      else if (command.startsWith("help")) {
+        Serial.println("Commands: scram(s), power(p), magnet(m), forward(f), backward(b), min, max, speed(sp)");
+      }
     }
   }
-  // =====================================================================
-  // 4. Stepper Motor Update
-  // Keep runSpeed() outside of an IF if possible, or ensure controlPin is reliable
-  if(controlPin) {
-    //stepper.runSpeed();
-  }
 
-  //Define variable again---------------------------------
-  uint8_t packet1 = 0;              //Packet that sends the digital bytes (See packet setup below) 8 bit data
-  uint8_t packet2 = 0;              //I ran out of space so this has the speed indicator
-  uint16_t positionSet = 0;         //Packet that sends where to set the position voltage set as 16 bits the controller only sends 10 bits
-  uint16_t positionRead = 0;        //Packet that sends where the position voltage is. Set as 16 bits only sends 10 bits
-  uint16_t rotaryKnob1Read = 0;     //Packet that sends the 1st rotary knob voltage. Set as 16 bits only sends 10 bits
-  uint16_t rotaryKnob2Read = 0;     //Packet that sends the 2nd rotary knob voltage. Set as 16 bits only sends 10 bits
+  // ==================== 4. INCOMING HARDWARE SERIAL (0x24 0xFF VERIFICATION) ====================
+  static enum { IDLE, SAW_24, SAW_FF } serialState = IDLE;
 
-  //Analog Inputs-----------------------------------------
-  positionSet = analogRead(positionSetPin);           //Assigns the digital value of the position set to variable. Variable is what sends through serial
-  positionRead = analogRead(positionReadPin);         //Assigns the digital value of the Position read to variable. Variable is what sends through serial
-  rotaryKnob1Read = analogRead(rotaryKnobReadPin1);   //Assigns the digital value of the rotaryKnob1 read to variable. Variable is what sends through serial
-  rotaryKnob2Read = analogRead(rotaryKnobReadPin2);   //Assigns the digital value of the rotaryKnob2 read to variable. Variable is what sends through serial
+  // while (Serial1.available() > 0) {
+  //   uint8_t incoming = Serial1.read();
+  //   switch (serialState) {
+  //     case IDLE:
+  //       if (incoming == 0x24) serialState = SAW_24;
+  //       break;
+  //     case SAW_24:
+  //       if (incoming == 0xFF) serialState = SAW_FF;
+  //       else serialState = IDLE;
+  //       break;
+  //     case SAW_FF:
+  //       uint8_t flipMask = incoming;
+  //       if (flipMask & (1 << 0)) scramToggledState    = !scramToggledState;
+  //       if (flipMask & (1 << 1)) powerToggledState    = !powerToggledState;
+  //       if (flipMask & (1 << 2)) magnetToggledState   = !magnetToggledState;
+  //       if (flipMask & (1 << 3)) forwardToggledState  = !forwardToggledState;
+  //       if (flipMask & (1 << 4)) backwardToggledState = !backwardToggledState;
+  //       if (flipMask & (1 << 5)) posMinToggledState   = !posMinToggledState;
+  //       if (flipMask & (1 << 6)) posMaxToggledState   = !posMaxToggledState;
+  //       if (flipMask & (1 << 7)) speedToggledState    = !speedToggledState;
+  //       serialState = IDLE; 
+  //       break;
+  //   }
+  // }
 
-  // Update speed only when the setpoint changes (with small hysteresis)
+  // ======================== 5. MOTOR MATH & DIRECTION ========================
   static int lastPositionSet = -1;
-  const int hysteresis = 4;   //hysteresis accounts for the LSB switching all the time
+  const int hysteresis = 4;
 
-  if (abs((int)positionSet - lastPositionSet) >= hysteresis) {    //Provides smooth stepping and RPM control
+  if (abs((int)positionSet - lastPositionSet) >= hysteresis) {
     lastPositionSet = positionSet;
-
-    float targetRPM = positionSet / 50;
-    float stepsPerSecond = targetRPM * stepsPerRevolution / 25.0;   //Target RPM in charge of changing speed
+    float targetRPM = positionSet / 50.0;
+    float stepsPerSecond = targetRPM * stepsPerRevolution / 50.0; 
     stepper.setSpeed(stepsPerSecond);
   }
 
-  //First digital packet(And other Serial Handling)----------------------------------
-  bool scramActive = (digitalRead(scramPin) == LOW);                 //This section of code tells pins whether to activate at 5v(high) or .7V(low)
-  bool powerActive = (digitalRead(powerPin) == LOW);                 //The variables are assigned as boolean type 
-  bool magnetActive = (digitalRead(electromagnetPin) == LOW);        //See Packet setup for which bit is what function
-  bool forwardActive = (digitalRead(forwardPin) == HIGH);
-  bool backwardActive = (digitalRead(backwardPin) == HIGH);
-  bool maxPositionActive = (digitalRead(rodPositionMaxPin) == HIGH);
-  bool minPositionActive = (digitalRead(rodPositionMinPin) == HIGH);
-
-    //Direction Control test code-----------------------
   if (forwardActive) {
-    digitalWrite(dirPin, LOW);      // Forward = dir LOW (0)
+    digitalWrite(dirPin, LOW); 
     digitalWrite(_dirPin, HIGH);
     controlPin = true;
-  }
-  else if (backwardActive) {
-    digitalWrite(dirPin, HIGH);     // Backward = dir HIGH (1)
+  } else if (backwardActive) {
+    digitalWrite(dirPin, HIGH);
     digitalWrite(_dirPin, LOW);
     controlPin = true;
+  } else {
+    controlPin = false;
   }
-  else{
-    controlPin = false;             //Ensures the motor stops with no input
-  }
 
-  //Second digital packet----------------------------------
-  bool fast_Slow = (digitalRead(speedPin) == LOW);
-  //bool exampleFunction = (digtialRead(examplePin) == Low);
+  // ======================== 6. BUILD DATA PACKETS ========================
+  uint8_t packet1 = 0;
+  uint8_t packet2 = 0;
 
-  //Packet1 Setup---------------------------------------------
-  
-  //Unlatched variables
-  // if (scramActive) packet1 |= (1 << 0);         //1st bit activates SCRAM condition
-  // if (powerActive) packet1 |= (1 << 1);         //2nd bit activates power
-  // if (magnetActive) packet1 |= (1 << 2);        //3rd bit activates the electromagnet
-  if (forwardActive) packet1 |= (1 << 3);       //4th bit activates the forward action of the stepper
-  if (backwardActive) packet1 |= (1 << 4);      //5th bit activates the backward action of the stepper
-  if (minPositionActive) packet1 |= (1 << 5);   //6th bit activates the pause movement at max range
-  if (maxPositionActive) packet1 |= (1 << 6);   //7th bit activates the pause movement at min range
+  if (forwardActive) packet1 |= (1 << 3); 
+  if (backwardActive) packet1 |= (1 << 4); 
+  if (minPositionActive) packet1 |= (1 << 5);
+  if (maxPositionActive) packet1 |= (1 << 6); 
 
-  //Latched Serial
   if (scramToggledState)  packet1 |= (1 << 0);
-  if (powerToggledState)  packet1 |= (1 << 1); // Uses the toggled state
-  if (magnetToggledState) packet1 |= (1 << 2); // Uses the toggled state
-  //if (forwardToggledState) packet1 |= (1 << 3);
-  //if (backwardToggledState) packet1 |= (1 << 4);
-  //if (posMinToggledState) packet1 |= (1<< 5);
-  //if (posMaxToggledState) packet1 |= (1 << 6);
-  if (speedToggledState) packet1 |= (1<< 7);
+  if (powerToggledState)  packet1 |= (1 << 1); 
+  if (magnetToggledState) packet1 |= (1 << 2); 
+  if (speedToggledState)  packet1 |= (1 << 7);
 
+  if (controlPin) packet2 |= (1 << 0); 
 
-  //Packet2 Setup
-  if (controlPin) packet2 |= (1<< 0);            //8th bit is a debug variable right now to see if PWM should output
-  //if (fast_Slow) packet2 |= (1 << 0);
-  //if (bitExample) packet1 |= (1 << bit#);
-
-  //Test serial code 
+  // ======================== 7. PERIODIC SERIAL PUSH ========================
   unsigned long now = millis();
+  if (now - lastTxTime >= txIntervalMs) {
+    lastTxTime = now;
 
-  // NEW: Fast, non-blocking link status check (runs every 500 ms)
-  // This keeps ethernetLinkUp accurate without any delay.
+    // Hardware TX
+    Serial1.write(packet1);
+    Serial1.write(packet2);
+    Serial1.write(highByte(positionSet));
+    Serial1.write(lowByte(positionSet));
+    Serial1.write(highByte(positionRead));
+    Serial1.write(lowByte(positionRead));
+    Serial1.write(highByte(rotaryKnob1Read));
+    Serial1.write(lowByte(rotaryKnob1Read));
+    Serial1.write(highByte(rotaryKnob2Read));
+    Serial1.write(lowByte(rotaryKnob2Read));
+    Serial1.write(0b00100100);
+
+    // USB Serial Debug
+    Serial.write(packet1);
+    Serial.write(packet2);
+    Serial.write(highByte(positionSet));
+    Serial.write(lowByte(positionSet));
+    Serial.write(highByte(positionRead));
+    Serial.write(lowByte(positionRead));
+    Serial.write(highByte(rotaryKnob1Read));
+    Serial.write(lowByte(rotaryKnob1Read));
+    Serial.write(highByte(rotaryKnob2Read));
+    Serial.write(lowByte(rotaryKnob2Read));
+    Serial.write(0b00100100);
+  }
+
+  // ======================== 8. ETHERNET NON-BLOCKING TASKS ========================
   if (now - lastLinkCheck >= 500) {
     lastLinkCheck = now;
     ethernetLinkUp = (Ethernet.linkStatus() == LinkON);
   }
 
-  if (now - lastTxTime >= txIntervalMs) {
-    lastTxTime = now;
-
-    //Serial1.flush();                  // Wait for any previous transmission to complete
-    //Serial.println(positionSet);
-
-    //Serial1.write(0b00100100);                //HEX 24 only for triggering on the oscope
-    //TX and RX comms
-    Serial1.write(packet1);                   //1st set of digital inputs
-    Serial1.write(packet2);                   //2nd set of digital inputs
-    Serial1.write(highByte(positionSet));     //Sets position of the control rod
-    Serial1.write(lowByte(positionSet));
-    Serial1.write(highByte(positionRead));    //Reads the position of the control rod
-    Serial1.write(lowByte(positionRead));
-    Serial1.write(highByte(rotaryKnob1Read)); //For the knob on the control panel
-    Serial1.write(lowByte(rotaryKnob1Read));
-    Serial1.write(highByte(rotaryKnob2Read)); //For the other knob of the control panel
-    Serial1.write(lowByte(rotaryKnob2Read));
-    Serial1.write(0b00100100);
-
-
-    //Test code for serial USB comms
-   // === NEW: Proper framed packet (start + length + payload + checksum) ===
-  Serial.println(0x24);                    // Start byte (same as your command protocol)
-  Serial.println(10);                      // Payload length = 10 bytes (fixed)
-
-  Serial.println(packet1);
-  Serial.println(packet2);
-  Serial.println(highByte(positionSet));
-  Serial.println(lowByte(positionSet));
-  Serial.println(highByte(positionRead));
-  Serial.println(lowByte(positionRead));
-  Serial.println(highByte(rotaryKnob1Read));
-  Serial.println(lowByte(rotaryKnob1Read));
-  Serial.println(highByte(rotaryKnob2Read));
-  Serial.println(lowByte(rotaryKnob2Read));
-
-  // Simple checksum (XOR of the 10 payload bytes)
-  uint8_t checksum = packet1 ^ packet2 ^
-                     highByte(positionSet) ^ lowByte(positionSet) ^
-                     highByte(positionRead) ^ lowByte(positionRead) ^
-                     highByte(rotaryKnob1Read) ^ lowByte(rotaryKnob1Read) ^
-                     highByte(rotaryKnob2Read) ^ lowByte(rotaryKnob2Read);
-  Serial.write(checksum);
-  }
-
-  // ==================== ETHERNET JSON WEB SERVER RESPONSE ====================
-  // listen for incoming clients
+  // HTTP JSON Server (Port 80)
   EthernetClient client = server.available();
   if (client) {
-    Serial.println("new client");
-    // an http request ends with a blank line
     boolean currentLineIsBlank = true;
     while (client.connected()) {
-      //stepper.runSpeed(); //This ensure the Stepper motor runs while connected to etherenet
       if (client.available()) {
         char c = client.read();
-        Serial.write(c);
-        // if you've gotten to the end of the line (received a newline
-        // character) and the line is blank, the http request has ended,
-        // so you can send a reply
         if (c == '\n' && currentLineIsBlank) {
-          // === JSON RESPONSE INSTEAD OF HTML TABLE ===
           client.println("HTTP/1.1 200 OK");
           client.println("Content-Type: application/json");
-          client.println("Connection: close");  
-          client.println("Access-Control-Allow-Origin: *"); // Allows cross-origin requests (useful for testing)
+          client.println("Connection: close");
+          client.println("Access-Control-Allow-Origin: *");
           client.println();
 
-          // Build JSON document with all relevant data
           StaticJsonDocument<384> doc;
-
           doc["scram"]          = scramToggledState;
           doc["power"]          = powerToggledState;
           doc["magnet"]         = magnetToggledState;
@@ -514,50 +384,49 @@ void loop() {
           doc["pos_max"]        = maxPositionActive;
           doc["fast_slow"]      = fast_Slow;
           doc["control_active"] = controlPin;
-
           doc["position_set"]   = positionSet;
           doc["position_read"]  = positionRead;
           doc["knob1"]          = rotaryKnob1Read;
           doc["knob2"]          = rotaryKnob2Read;
-
           doc["packet1"]        = packet1;
           doc["packet2"]        = packet2;
           doc["timestamp"]      = millis();
 
-          // Send the JSON directly over Ethernet
           serializeJson(doc, client);
           client.println();
-
           break;
         }
-        if (c == '\n') {
-          // you're starting a new line
-          currentLineIsBlank = true;
-        } else if (c != '\r') {
-          // you've gotten a character on the current line
-          currentLineIsBlank = false;
-        }
+        if (c == '\n') currentLineIsBlank = true;
+        else if (c != '\r') currentLineIsBlank = false;
       }
     }
-    // give the web browser time to receive the data
     delay(1);
-    // close the connection:
     client.stop();
-    Serial.println("client disconnected");
   }
 
-  // ==================== PERIODIC PUSH TO PI (NOW SAFE WHEN CABLE UNPLUGGED) ====================
-  // Only attempt connect() when we know the link is up.
-  // This removes the multi-second blocking delays you saw.
+  // Pi Command Server (Port 5005)
+  EthernetClient cmdClient = commandServer.available();
+  if (cmdClient) {
+    String jsonStr = "";
+    unsigned long timeout = millis() + 500; 
+    while (cmdClient.connected() && millis() < timeout) {
+      if (cmdClient.available()) jsonStr += (char)cmdClient.read();
+    }
+    cmdClient.stop(); 
+    
+    StaticJsonDocument<256> doc;
+    DeserializationError err = deserializeJson(doc, jsonStr);
+    if (!err) {
+      // Parse commands here if needed later
+    }
+  }
+
+  // Periodic Push to Pi (Port 6006)
   if (ethernetLinkUp && (now - lastPushTime >= pushIntervalMs)) {
     lastPushTime = now;
-
     EthernetClient outgoing;
     if (outgoing.connect(piIP, piPort)) {
       StaticJsonDocument<384> doc;
-
-      //JSON stuff and organizing through SPI to Ethernet
-
       doc["scram"]          = scramToggledState;
       doc["power"]          = powerToggledState;
       doc["magnet"]         = magnetToggledState;
@@ -575,14 +444,12 @@ void loop() {
       doc["packet2"]        = packet2;
       doc["timestamp"]      = millis();
 
-      serializeJson(doc, outgoing);
-      outgoing.println();        // Makes it easy for Pi to read line-by-line
-      outgoing.stop();           // Important: close after sending
-
-      Serial.println("Pushed JSON to Pi");
+      serializeJson(doc, outgoing); 
+      outgoing.print('\n'); 
+      outgoing.flush(); 
+      outgoing.stop();
     } else {
-      ethernetLinkUp = false;    // Immediately mark link as down so we skip future attempts until it comes back
-      //Serial.println("Failed to connect to Pi for push");
+      ethernetLinkUp = false;
     }
   }
 }
