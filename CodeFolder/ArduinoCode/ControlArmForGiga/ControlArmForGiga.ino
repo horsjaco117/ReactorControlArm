@@ -258,30 +258,30 @@ void loop() {
   // ==================== 4. INCOMING HARDWARE SERIAL (0x24 0xFF VERIFICATION) ====================
   static enum { IDLE, SAW_24, SAW_FF } serialState = IDLE;
 
-  // while (Serial1.available() > 0) {
-  //   uint8_t incoming = Serial1.read();
-  //   switch (serialState) {
-  //     case IDLE:
-  //       if (incoming == 0x24) serialState = SAW_24;
-  //       break;
-  //     case SAW_24:
-  //       if (incoming == 0xFF) serialState = SAW_FF;
-  //       else serialState = IDLE;
-  //       break;
-  //     case SAW_FF:
-  //       uint8_t flipMask = incoming;
-  //       if (flipMask & (1 << 0)) scramToggledState    = !scramToggledState;
-  //       if (flipMask & (1 << 1)) powerToggledState    = !powerToggledState;
-  //       if (flipMask & (1 << 2)) magnetToggledState   = !magnetToggledState;
-  //       if (flipMask & (1 << 3)) forwardToggledState  = !forwardToggledState;
-  //       if (flipMask & (1 << 4)) backwardToggledState = !backwardToggledState;
-  //       if (flipMask & (1 << 5)) posMinToggledState   = !posMinToggledState;
-  //       if (flipMask & (1 << 6)) posMaxToggledState   = !posMaxToggledState;
-  //       if (flipMask & (1 << 7)) speedToggledState    = !speedToggledState;
-  //       serialState = IDLE; 
-  //       break;
-  //   }
-  // }
+  while (Serial1.available() > 0) {
+    uint8_t incoming = Serial1.read();
+    switch (serialState) {
+      case IDLE:
+        if (incoming == 0x24) serialState = SAW_24;
+        break;
+      case SAW_24:
+        if (incoming == 0xFF) serialState = SAW_FF;
+        else serialState = IDLE;
+        break;
+      case SAW_FF:
+        uint8_t flipMask = incoming;
+        if (flipMask & (1 << 0)) scramToggledState    = !scramToggledState;
+        if (flipMask & (1 << 1)) powerToggledState    = !powerToggledState;
+        if (flipMask & (1 << 2)) magnetToggledState   = !magnetToggledState;
+        if (flipMask & (1 << 3)) forwardToggledState  = !forwardToggledState;
+        if (flipMask & (1 << 4)) backwardToggledState = !backwardToggledState;
+        if (flipMask & (1 << 5)) posMinToggledState   = !posMinToggledState;
+        if (flipMask & (1 << 6)) posMaxToggledState   = !posMaxToggledState;
+        if (flipMask & (1 << 7)) speedToggledState    = !speedToggledState;
+        serialState = IDLE; 
+        break;
+    }
+  }
 
   // ======================== 5. MOTOR MATH & DIRECTION ========================
   static int lastPositionSet = -1;
@@ -417,8 +417,18 @@ void loop() {
     StaticJsonDocument<256> doc;
     DeserializationError err = deserializeJson(doc, jsonStr);
     if (!err) {
-      // Parse commands here if needed later
+      // === ADD COMMAND PARSING HERE ===
+    if (doc.containsKey("scram"))   scramToggledState   = doc["scram"].as<bool>();
+    if (doc.containsKey("power"))   powerToggledState   = doc["power"].as<bool>();
+    if (doc.containsKey("magnet"))  magnetToggledState  = doc["magnet"].as<bool>();
+    if (doc.containsKey("forward")) forwardToggledState = doc["forward"].as<bool>();
+    if (doc.containsKey("backward"))backwardToggledState= doc["backward"].as<bool>();
+    if (doc.containsKey("min"))     posMinToggledState  = doc["min"].as<bool>();
+    if (doc.containsKey("max"))     posMaxToggledState  = doc["max"].as<bool>();
+    if (doc.containsKey("speed"))   speedToggledState   = doc["speed"].as<bool>();
     }
+    cmdClient.println("{\"status\":\"ok\"}");
+    cmdClient.stop();
   }
 
   // Periodic Push to Pi (Port 6006)

@@ -103,7 +103,7 @@ void setup() {//Digital Input Setup
 
   //Serial setup------------------------------------------
   Serial1.begin(115200);       //Tx Pin        
-  Serial.begin(115200);       // USB debugging
+  Serial.begin(9600);       // USB debugging
   //Serial1.begin(115200, SERIAL_8N1);  // TX1 output 1, 9600 baude, 8 bit packets, no parity bit
 }
 
