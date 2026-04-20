@@ -159,7 +159,7 @@ void setup() {
   
   // Draw Static UI Labels
   display.setCursor(20, 20); 
-  display.println("ROBCO UNIFIED OPERATING SYSTEM v8.4");
+  display.println("HORSCO UNIFIED OPERATING SYSTEM v8.4");
   display.drawFastHLine(20, 40, 400, AMBER);
 
   // Column 1
@@ -574,7 +574,7 @@ void bootupSequence() {
   display.setTextColor(AMBER);
 
   // Simulated Boot Sequence
-  display.println("ROBCO INDUSTRIES UNIFIED OPERATING SYSTEM");
+  display.println("HORSCO INDUSTRIES UNIFIED OPERATING SYSTEM");
   delay(500);
   display.println("COPYRIGHT 2075-2077");
   delay(500);
