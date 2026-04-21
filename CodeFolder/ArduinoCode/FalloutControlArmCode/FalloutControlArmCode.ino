@@ -5,6 +5,11 @@
 #include <mbed.h>
 #include <Arduino_GigaDisplay_GFX.h>
 
+#include "USBHostGiga.h"
+
+Keyboard keyb;
+String currentInput = "";
+
 //Display
 GigaDisplay_GFX display;
 
@@ -18,7 +23,7 @@ EthernetServer server(80);
 EthernetServer commandServer(5005);
 
 const uint16_t piPort = 6006;
-const unsigned long pushIntervalMs = 20;
+const unsigned long pushIntervalMs = 200;
 unsigned long lastPushTime = 0;
 
 bool ethernetLinkUp = false;
@@ -142,6 +147,10 @@ void setup() {
   Serial1.begin(115200);  // Hardware TX/RX
   Serial.setTimeout(10);  // Prevents USB string reading from lagging the Ethernet loop
 
+
+  pinMode(PA_15, OUTPUT);
+  digitalWrite(PA_15, HIGH);
+  keyb.begin();
   // --- Display Initialization ---
   display.begin();
   display.setRotation(1);
@@ -169,6 +178,8 @@ void setup() {
   display.setCursor(20, 180); display.print("KNOB 1:");
   display.setCursor(20, 220); display.print("PKT 1:  0x");
   display.setCursor(20, 260); display.print("CONTROL:");
+  display.setCursor(20, 280);
+  display.print("KEYBOARD INPUT:");
 
   // Column 2
   display.setCursor(280, 60);  display.print("POWER:");
@@ -290,25 +301,71 @@ void loop() {
   }
   lastSpeedButtonReading = currentSpeedReading;
 
-  // ==================== 3. INCOMING USB SERIAL COMMANDS ====================
-  if (Serial.available() > 0) {
-    String command = Serial.readStringUntil('\n'); 
-    command.trim(); 
+ // ==================== INCOMING COMMANDS (Serial Monitor + USB Keyboard) ====================
 
-    if (command.length() > 0) {
-      if (command.equalsIgnoreCase("scram") || command.equalsIgnoreCase("s")) scramToggledState = !scramToggledState;
-      else if (command.equalsIgnoreCase("power") || command.equalsIgnoreCase("p")) powerToggledState = !powerToggledState;
-      else if (command.equalsIgnoreCase("magnet") || command.equalsIgnoreCase("m")) magnetToggledState = !magnetToggledState;
-      else if (command.equalsIgnoreCase("forward") || command.equalsIgnoreCase("f")) forwardToggledState = !forwardToggledState;
-      else if (command.equalsIgnoreCase("backward") || command.equalsIgnoreCase("b")) backwardToggledState = !backwardToggledState;
-      else if (command.equalsIgnoreCase("min") || command.equalsIgnoreCase("minpos")) posMinToggledState = !posMinToggledState;
-      else if (command.equalsIgnoreCase("max") || command.equalsIgnoreCase("maxpos")) posMaxToggledState = !posMaxToggledState;
-      else if (command.equalsIgnoreCase("speed") || command.equalsIgnoreCase("sp")) speedToggledState = !speedToggledState;
-      else if (command.startsWith("help")) {
-        Serial.println("Commands: scram(s), power(p), magnet(m), forward(f), backward(b), min, max, speed(sp)");
+// Serial Monitor (USB-C / IDE)
+if (Serial.available() > 0) {
+  String command = Serial.readStringUntil('\n');
+  processCommand(command);
+}
+
+// ==================== KEYBOARD INPUT (USB-A port) ====================
+while (keyb.available()) {
+  auto keyEvent = keyb.read();
+  char c = keyb.getAscii(keyEvent);
+
+  if (c) {                                      // printable or control character
+    if (c == '\r' || c == '\n') {               // ENTER key
+      if (currentInput.length() > 0) {
+        processCommand(currentInput);
+        currentInput = "";
       }
     }
+    else if (c == '\b' || c == 127) {           // BACKSPACE
+      if (currentInput.length() > 0) {
+        currentInput.remove(currentInput.length() - 1);
+      }
+    }
+    else {
+      currentInput += c;                        // normal character
+    }
+
+    // Live echo on the display
+    updateKeyboardInputField();
   }
+}
+
+// // Serial Monitor (USB-C / IDE)
+// if (Serial.available() > 0) {
+//   String command = Serial.readStringUntil('\n');
+//   processCommand(command);
+// }
+
+// ==================== KEYBOARD INPUT (USB-A port) ====================
+if (keyb.available()) {
+  auto keyEvent = keyb.read();
+  char c = keyb.getAscii(keyEvent);
+
+  if (c) {                                      // printable or control character
+    if (c == '\r' || c == '\n') {               // ENTER key
+      if (currentInput.length() > 0) {
+        processCommand(currentInput);           // reuse the exact logic you already have
+        currentInput = "";
+      }
+    }
+    else if (c == '\b' || c == 127) {           // BACKSPACE
+      if (currentInput.length() > 0) {
+        currentInput.remove(currentInput.length() - 1);
+      }
+    }
+    else {
+      currentInput += c;                        // normal character
+    }
+
+    // Live echo on the display (zero-flicker, same style as your other fields)
+    updateKeyboardInputField();
+  }
+}
 
   // ==================== 4. INCOMING HARDWARE SERIAL ====================
   static enum { IDLE, SAW_24, SAW_FF } serialState = IDLE;
@@ -490,7 +547,7 @@ void loop() {
   EthernetClient cmdClient = commandServer.available();
   if (cmdClient) {
     String jsonStr = "";
-    unsigned long timeout = millis() + 500; 
+    unsigned long timeout = millis() + 20; 
     while (cmdClient.connected() && millis() < timeout) {
       if (cmdClient.available()) jsonStr += (char)cmdClient.read();
     }
@@ -566,9 +623,14 @@ void updateField(int x, int y, int width, String newValue, String &oldValue) {
   }
 }
 
-// 1. ADD THIS FUNCTION AT THE BOTTOM OF YOUR CODE
 void bootupSequence() {
+  // 1. Clear the screen
   display.fillScreen(BLACK);
+  
+  // 2. Draw the scanlines first so they sit in the background
+  drawScanlines(0, 0, display.width(), display.height());
+
+  // 3. Set up text rendering
   display.setCursor(20, 20);
   display.setTextSize(2);
   display.setTextColor(AMBER);
@@ -599,7 +661,55 @@ void bootupSequence() {
   display.println(" CONNECTED.");
   delay(500);
   
-  // Clear the screen before starting the main UI
-  display.fillScreen(BLACK);
-  drawScanlines(0, 0, display.width(), display.height());
+  // No need to clear screen here anymore, 
+  // just proceed to main loop setup.
+}
+// ======================== LIVE KEYBOARD INPUT DISPLAY ========================
+void updateKeyboardInputField() {
+  static String oldInput = "";
+  const int inputX = 20;
+  const int inputY = 300;        
+  // Reduce this from 700 to just slightly wider than your text needs
+  const int inputWidth = 400;    
+
+  if (currentInput != oldInput) {
+    display.fillRect(inputX, inputY, inputWidth, 20, BLACK);
+    drawScanlines(inputX, inputY, inputWidth, 20);
+
+    display.setCursor(inputX, inputY);
+    display.setTextSize(2);
+    display.setTextColor(AMBER);
+    display.print("CMD> ");
+    display.print(currentInput);
+    display.print("_");          
+
+    oldInput = currentInput;
+  }
+}
+
+// ======================== COMMAND PROCESSOR ========================
+void processCommand(String cmd) {
+
+  cmd.trim();
+  if (cmd.length() == 0) return;
+
+  if (cmd.equalsIgnoreCase("scram") || cmd.equalsIgnoreCase("s")) 
+    scramToggledState = !scramToggledState;
+  else if (cmd.equalsIgnoreCase("power") || cmd.equalsIgnoreCase("p")) 
+    powerToggledState = !powerToggledState;
+  else if (cmd.equalsIgnoreCase("magnet") || cmd.equalsIgnoreCase("m")) 
+    magnetToggledState = !magnetToggledState;
+  else if (cmd.equalsIgnoreCase("forward") || cmd.equalsIgnoreCase("f")) 
+    forwardToggledState = !forwardToggledState;
+  else if (cmd.equalsIgnoreCase("backward") || cmd.equalsIgnoreCase("b")) 
+    backwardToggledState = !backwardToggledState;
+  else if (cmd.equalsIgnoreCase("min") || cmd.equalsIgnoreCase("minpos")) 
+    posMinToggledState = !posMinToggledState;
+  else if (cmd.equalsIgnoreCase("max") || cmd.equalsIgnoreCase("maxpos")) 
+    posMaxToggledState = !posMaxToggledState;
+  else if (cmd.equalsIgnoreCase("speed") || cmd.equalsIgnoreCase("sp")) 
+    speedToggledState = !speedToggledState;
+  else if (cmd.startsWith("help")) {
+    Serial.println("Commands: scram(s), power(p), magnet(m), forward(f), backward(b), min, max, speed(sp)");
+  }
 }
