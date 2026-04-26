@@ -1,0 +1,266 @@
+(kicad_sch
+	(version 20250114)
+	(generator "eeschema")
+	(generator_version "9.0")
+	(uuid "3cb2e715-dcdc-40c0-b9df-54068ea48efd")
+	(paper "A4")
+	(lib_symbols)
+	(sheet
+		(at 24.13 26.67)
+		(size 55.88 40.64)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(fields_autoplaced yes)
+		(stroke
+			(width 0.1524)
+			(type solid)
+		)
+		(fill
+			(color 0 0 0 0.0000)
+		)
+		(uuid "155dca6d-5cf8-4d23-8e91-998a4eef44c7")
+		(property "Sheetname" "Power Supply"
+			(at 24.13 25.9584 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left bottom)
+			)
+		)
+		(property "Sheetfile" "PowerSupply.kicad_sch"
+			(at 24.13 67.8946 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left top)
+			)
+		)
+		(instances
+			(project "FinalConnectionDiagram"
+				(path "/3cb2e715-dcdc-40c0-b9df-54068ea48efd"
+					(page "4")
+				)
+			)
+		)
+	)
+	(sheet
+		(at 27.94 87.63)
+		(size 54.61 33.02)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(fields_autoplaced yes)
+		(stroke
+			(width 0.1524)
+			(type solid)
+		)
+		(fill
+			(color 0 0 0 0.0000)
+		)
+		(uuid "3389afa0-6741-46f2-99fb-aa98164a52f9")
+		(property "Sheetname" "StepperDriver"
+			(at 27.94 86.9184 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left bottom)
+			)
+		)
+		(property "Sheetfile" "StepperDriver.kicad_sch"
+			(at 27.94 121.2346 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left top)
+			)
+		)
+		(instances
+			(project "FinalConnectionDiagram"
+				(path "/3cb2e715-dcdc-40c0-b9df-54068ea48efd"
+					(page "7")
+				)
+			)
+		)
+	)
+	(sheet
+		(at 195.58 90.17)
+		(size 60.96 38.1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(fields_autoplaced yes)
+		(stroke
+			(width 0.1524)
+			(type solid)
+		)
+		(fill
+			(color 0 0 0 0.0000)
+		)
+		(uuid "35c2dd5a-8170-4ad0-9d7f-b81bc2a79532")
+		(property "Sheetname" "Control Panel"
+			(at 195.58 89.4584 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left bottom)
+			)
+		)
+		(property "Sheetfile" "ControlPanel.kicad_sch"
+			(at 195.58 128.8546 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left top)
+			)
+		)
+		(instances
+			(project "FinalConnectionDiagram"
+				(path "/3cb2e715-dcdc-40c0-b9df-54068ea48efd"
+					(page "6")
+				)
+			)
+		)
+	)
+	(sheet
+		(at 100.33 29.21)
+		(size 59.69 36.83)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(fields_autoplaced yes)
+		(stroke
+			(width 0.1524)
+			(type solid)
+		)
+		(fill
+			(color 0 0 0 0.0000)
+		)
+		(uuid "44fc4b7e-26ae-48a6-89dd-b14603e8a9fd")
+		(property "Sheetname" "RaspberryPi"
+			(at 100.33 28.4984 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left bottom)
+			)
+		)
+		(property "Sheetfile" "RaspberryPi.kicad_sch"
+			(at 100.33 66.6246 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left top)
+			)
+		)
+		(instances
+			(project "FinalConnectionDiagram"
+				(path "/3cb2e715-dcdc-40c0-b9df-54068ea48efd"
+					(page "3")
+				)
+			)
+		)
+	)
+	(sheet
+		(at 194.31 27.94)
+		(size 55.88 41.91)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(fields_autoplaced yes)
+		(stroke
+			(width 0.1524)
+			(type solid)
+		)
+		(fill
+			(color 0 0 0 0.0000)
+		)
+		(uuid "4c453c05-7330-42af-acec-cadaa25205dd")
+		(property "Sheetname" "LabView(Optional)"
+			(at 194.31 27.2284 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left bottom)
+			)
+		)
+		(property "Sheetfile" "LabView.kicad_sch"
+			(at 194.31 70.4346 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left top)
+			)
+		)
+		(instances
+			(project "FinalConnectionDiagram"
+				(path "/3cb2e715-dcdc-40c0-b9df-54068ea48efd"
+					(page "5")
+				)
+			)
+		)
+	)
+	(sheet
+		(at 102.87 90.17)
+		(size 58.42 34.29)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(fields_autoplaced yes)
+		(stroke
+			(width 0.1524)
+			(type solid)
+		)
+		(fill
+			(color 0 0 0 0.0000)
+		)
+		(uuid "6cba6491-deea-44f4-b210-e5a10b01f582")
+		(property "Sheetname" "ArduinoGiga"
+			(at 102.87 89.4584 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left bottom)
+			)
+		)
+		(property "Sheetfile" "ArduinoGiga.kicad_sch"
+			(at 102.87 125.0446 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left top)
+			)
+		)
+		(instances
+			(project "FinalConnectionDiagram"
+				(path "/3cb2e715-dcdc-40c0-b9df-54068ea48efd"
+					(page "2")
+				)
+			)
+		)
+	)
+	(sheet_instances
+		(path "/"
+			(page "1")
+		)
+	)
+	(embedded_fonts no)
+)
