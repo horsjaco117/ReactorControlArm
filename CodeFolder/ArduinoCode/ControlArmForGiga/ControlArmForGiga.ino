@@ -9,7 +9,7 @@ using namespace std::chrono_literals;
 // ======================== ETHERNET CONFIG ========================
 byte mac[] = {0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED};
 IPAddress ip(134, 50, 51, 22);
-IPAddress piIP(134, 50, 51, 24);
+IPAddress piIP(134, 50, 51, 25);
 EthernetServer server(80);
 EthernetServer commandServer(5005);
 
@@ -50,7 +50,7 @@ const uint8_t dirPin = 5;
 const uint8_t _dirPin = 7;
 const uint8_t motorInterfaceType = 1;
 const float stepsPerRevolution = 6400.0;
-
+a
 // ======================== STATE VARIABLES ========================
 // Latched (toggled) states
 bool scramToggledState = false;

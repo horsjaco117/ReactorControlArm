@@ -5,12 +5,7 @@
 #include <mbed.h>
 #include <Arduino_GigaDisplay_GFX.h>
 
-#include "USBHostGiga.h"
-
-Keyboard keyb;
-String currentInput = "";
-
-//Display
+// Display
 GigaDisplay_GFX display;
 
 using namespace std::chrono_literals;
@@ -23,9 +18,8 @@ EthernetServer server(80);
 EthernetServer commandServer(5005);
 
 const uint16_t piPort = 6006;
-const unsigned long pushIntervalMs = 200;
+const unsigned long pushIntervalMs = 20;
 unsigned long lastPushTime = 0;
-
 bool ethernetLinkUp = false;
 unsigned long lastLinkCheck = 0;
 const int CS_Pin = 10;
@@ -96,6 +90,12 @@ String old_posSet, old_posRead;
 String old_knob1, old_knob2;
 String old_pkt1, old_pkt2, old_control;
 
+// ======================== GRAPHICS ENGINE GLOBALS ========================
+const int GRAPH_WIDTH = 100;
+int wave[GRAPH_WIDTH]; 
+unsigned long lastGraphUpdate = 0;
+const unsigned long graphInterval = 50; // 20fps for the graph
+
 // ======================== MOTOR SETUP ========================
 volatile bool controlPin = false; 
 AccelStepper stepper = AccelStepper(motorInterfaceType, stepPin, dirPin);
@@ -108,8 +108,15 @@ void updateMotor() {
   }
 }
 
-void setup() {
+// Function prototypes to keep compiler happy
+void bootupSequence();
+void drawScanlines(int x, int y, int w, int h);
+void drawUI();
+void updateField(int x, int y, int width, String newValue, String &oldValue);
+void drawOscilloscope(int x, int y);
+void applyAtmosphericGlitch();
 
+void setup() {
   // Fallout New Vegas color palette definition
   AMBER = display.color565(255, 182, 66);
   DARK_AMBER = display.color565(60, 40, 10);
@@ -127,7 +134,7 @@ void setup() {
   pinMode(stepPin, OUTPUT);
   pinMode(dirPin, OUTPUT);
   pinMode(_dirPin, OUTPUT);
-  pinMode(5, OUTPUT); // Kept from Serial sketch
+  pinMode(5, OUTPUT); 
 
   pinMode(positionSetPin, INPUT);
   pinMode(positionReadPin, INPUT);
@@ -147,50 +154,17 @@ void setup() {
   Serial1.begin(115200);  // Hardware TX/RX
   Serial.setTimeout(10);  // Prevents USB string reading from lagging the Ethernet loop
 
-
-  pinMode(PA_15, OUTPUT);
-  digitalWrite(PA_15, HIGH);
-  keyb.begin();
   // --- Display Initialization ---
   display.begin();
   display.setRotation(1);
 
+  // Run the boot sequence animation
   bootupSequence();
 
-
-  // Initial screen wipe and global scanlines
+  // Setup the persistent UI background
   display.fillScreen(BLACK);
   drawScanlines(0, 0, display.width(), display.height());
-
-  // Setup text for static UI drawing (transparent background)
-  display.setTextColor(AMBER); 
-  display.setTextSize(2);
-  
-  // Draw Static UI Labels
-  display.setCursor(20, 20); 
-  display.println("HORSCO UNIFIED OPERATING SYSTEM v8.4");
-  display.drawFastHLine(20, 40, 400, AMBER);
-
-  // Column 1
-  display.setCursor(20, 60);  display.print("SCRAM:");
-  display.setCursor(20, 100); display.print("FWD:");
-  display.setCursor(20, 140); display.print("POS SET:");
-  display.setCursor(20, 180); display.print("KNOB 1:");
-  display.setCursor(20, 220); display.print("PKT 1:  0x");
-  display.setCursor(20, 260); display.print("CONTROL:");
-  display.setCursor(20, 280);
-  display.print("KEYBOARD INPUT:");
-
-  // Column 2
-  display.setCursor(280, 60);  display.print("POWER:");
-  display.setCursor(280, 100); display.print("BWD:");
-  display.setCursor(280, 140); display.print("POS READ:");
-  display.setCursor(280, 180); display.print("KNOB 2:");
-  display.setCursor(280, 220); display.print("PKT 2:  0x");
-
-  // Column 3
-  display.setCursor(540, 60);  display.print("MAGNET:");
-  display.setCursor(540, 100); display.print("SPEED:");
+  drawUI();
 
   // --- Ethernet Setup ---
   Ethernet.begin(mac, ip);
@@ -301,71 +275,25 @@ void loop() {
   }
   lastSpeedButtonReading = currentSpeedReading;
 
- // ==================== INCOMING COMMANDS (Serial Monitor + USB Keyboard) ====================
+  // ==================== 3. INCOMING USB SERIAL COMMANDS ====================
+  if (Serial.available() > 0) {
+    String command = Serial.readStringUntil('\n'); 
+    command.trim(); 
 
-// Serial Monitor (USB-C / IDE)
-if (Serial.available() > 0) {
-  String command = Serial.readStringUntil('\n');
-  processCommand(command);
-}
-
-// ==================== KEYBOARD INPUT (USB-A port) ====================
-while (keyb.available()) {
-  auto keyEvent = keyb.read();
-  char c = keyb.getAscii(keyEvent);
-
-  if (c) {                                      // printable or control character
-    if (c == '\r' || c == '\n') {               // ENTER key
-      if (currentInput.length() > 0) {
-        processCommand(currentInput);
-        currentInput = "";
+    if (command.length() > 0) {
+      if (command.equalsIgnoreCase("scram") || command.equalsIgnoreCase("s")) scramToggledState = !scramToggledState;
+      else if (command.equalsIgnoreCase("power") || command.equalsIgnoreCase("p")) powerToggledState = !powerToggledState;
+      else if (command.equalsIgnoreCase("magnet") || command.equalsIgnoreCase("m")) magnetToggledState = !magnetToggledState;
+      else if (command.equalsIgnoreCase("forward") || command.equalsIgnoreCase("f")) forwardToggledState = !forwardToggledState;
+      else if (command.equalsIgnoreCase("backward") || command.equalsIgnoreCase("b")) backwardToggledState = !backwardToggledState;
+      else if (command.equalsIgnoreCase("min") || command.equalsIgnoreCase("minpos")) posMinToggledState = !posMinToggledState;
+      else if (command.equalsIgnoreCase("max") || command.equalsIgnoreCase("maxpos")) posMaxToggledState = !posMaxToggledState;
+      else if (command.equalsIgnoreCase("speed") || command.equalsIgnoreCase("sp")) speedToggledState = !speedToggledState;
+      else if (command.startsWith("help")) {
+        Serial.println("Commands: scram(s), power(p), magnet(m), forward(f), backward(b), min, max, speed(sp)");
       }
     }
-    else if (c == '\b' || c == 127) {           // BACKSPACE
-      if (currentInput.length() > 0) {
-        currentInput.remove(currentInput.length() - 1);
-      }
-    }
-    else {
-      currentInput += c;                        // normal character
-    }
-
-    // Live echo on the display
-    updateKeyboardInputField();
   }
-}
-
-// // Serial Monitor (USB-C / IDE)
-// if (Serial.available() > 0) {
-//   String command = Serial.readStringUntil('\n');
-//   processCommand(command);
-// }
-
-// ==================== KEYBOARD INPUT (USB-A port) ====================
-if (keyb.available()) {
-  auto keyEvent = keyb.read();
-  char c = keyb.getAscii(keyEvent);
-
-  if (c) {                                      // printable or control character
-    if (c == '\r' || c == '\n') {               // ENTER key
-      if (currentInput.length() > 0) {
-        processCommand(currentInput);           // reuse the exact logic you already have
-        currentInput = "";
-      }
-    }
-    else if (c == '\b' || c == 127) {           // BACKSPACE
-      if (currentInput.length() > 0) {
-        currentInput.remove(currentInput.length() - 1);
-      }
-    }
-    else {
-      currentInput += c;                        // normal character
-    }
-
-    // Live echo on the display (zero-flicker, same style as your other fields)
-    updateKeyboardInputField();
-  }
-}
 
   // ==================== 4. INCOMING HARDWARE SERIAL ====================
   static enum { IDLE, SAW_24, SAW_FF } serialState = IDLE;
@@ -493,7 +421,14 @@ if (keyb.available()) {
     Serial.write(0b00100100);
   }
 
-  // ======================== 9. ETHERNET NON-BLOCKING TASKS ========================
+  // ==================== 9. GRAPHICS ENGINE ====================
+  // Oscilloscope positioned at X:540, Y:180
+  drawOscilloscope(540, 180);
+  
+  // Subtle atmospheric glitches
+  applyAtmosphericGlitch();
+
+  // ======================== 10. ETHERNET NON-BLOCKING TASKS ========================
   if (now - lastLinkCheck >= 500) {
     lastLinkCheck = now;
     ethernetLinkUp = (Ethernet.linkStatus() == LinkON);
@@ -547,7 +482,7 @@ if (keyb.available()) {
   EthernetClient cmdClient = commandServer.available();
   if (cmdClient) {
     String jsonStr = "";
-    unsigned long timeout = millis() + 20; 
+    unsigned long timeout = millis() + 500; 
     while (cmdClient.connected() && millis() < timeout) {
       if (cmdClient.available()) jsonStr += (char)cmdClient.read();
     }
@@ -556,14 +491,14 @@ if (keyb.available()) {
     StaticJsonDocument<256> doc;
     DeserializationError err = deserializeJson(doc, jsonStr);
     if (!err) {
-    if (doc.containsKey("scram"))   scramToggledState   = doc["scram"].as<bool>();
-    if (doc.containsKey("power"))   powerToggledState   = doc["power"].as<bool>();
-    if (doc.containsKey("magnet"))  magnetToggledState  = doc["magnet"].as<bool>();
-    if (doc.containsKey("forward")) forwardToggledState = doc["forward"].as<bool>();
-    if (doc.containsKey("backward"))backwardToggledState= doc["backward"].as<bool>();
-    if (doc.containsKey("min"))     posMinToggledState  = doc["min"].as<bool>();
-    if (doc.containsKey("max"))     posMaxToggledState  = doc["max"].as<bool>();
-    if (doc.containsKey("speed"))   speedToggledState   = doc["speed"].as<bool>();
+      if (doc.containsKey("scram"))   scramToggledState   = doc["scram"].as<bool>();
+      if (doc.containsKey("power"))   powerToggledState   = doc["power"].as<bool>();
+      if (doc.containsKey("magnet"))  magnetToggledState  = doc["magnet"].as<bool>();
+      if (doc.containsKey("forward")) forwardToggledState = doc["forward"].as<bool>();
+      if (doc.containsKey("backward"))backwardToggledState= doc["backward"].as<bool>();
+      if (doc.containsKey("min"))     posMinToggledState  = doc["min"].as<bool>();
+      if (doc.containsKey("max"))     posMaxToggledState  = doc["max"].as<bool>();
+      if (doc.containsKey("speed"))   speedToggledState   = doc["speed"].as<bool>();
     }
     cmdClient.println("{\"status\":\"ok\"}");
     cmdClient.stop();
@@ -602,19 +537,96 @@ if (keyb.available()) {
   }
 }
 
-// ======================== HELPER FUNCTIONS ========================
+// ======================== HELPER & GRAPHICS FUNCTIONS ========================
+
+// Separated UI function so it can be redrawn after atmospheric glitches
+void drawUI() {
+  display.setTextColor(AMBER); 
+  display.setTextSize(2);
+  
+  display.setCursor(20, 20); 
+  display.println("HORSCO UNIFIED OPERATING SYSTEM v8.4");
+  display.drawFastHLine(20, 40, 400, AMBER);
+
+  // Column 1
+  display.setCursor(20, 60);  display.print("SCRAM:");
+  display.setCursor(20, 100); display.print("FWD:");
+  display.setCursor(20, 140); display.print("POS SET:");
+  display.setCursor(20, 180); display.print("KNOB 1:");
+  display.setCursor(20, 220); display.print("PKT 1:  0x");
+  display.setCursor(20, 260); display.print("CONTROL:");
+
+  // Column 2
+  display.setCursor(280, 60);  display.print("POWER:");
+  display.setCursor(280, 100); display.print("BWD:");
+  display.setCursor(280, 140); display.print("POS READ:");
+  display.setCursor(280, 180); display.print("KNOB 2:");
+  display.setCursor(280, 220); display.print("PKT 2:  0x");
+
+  // Column 3
+  display.setCursor(540, 60);  display.print("MAGNET:");
+  display.setCursor(540, 100); display.print("SPEED:");
+  
+  // O-Scope Label
+  display.setCursor(540, 150); display.print("SIGNAL TRACE:");
+}
+
+// Oscilloscope graph plotting
+void drawOscilloscope(int x, int y) {
+  if (millis() - lastGraphUpdate < graphInterval) return;
+  lastGraphUpdate = millis();
+
+  // 1. Clear old graph area
+  display.fillRect(x, y, GRAPH_WIDTH, 40, BLACK);
+
+  // 2. Shift values and grab new data
+  for(int i = 0; i < GRAPH_WIDTH - 1; i++) wave[i] = wave[i+1];
+  wave[GRAPH_WIDTH - 1] = map(analogRead(rotaryKnobReadPin1), 0, 1023, 0, 40);
+
+  // 3. Draw new graph line
+  for(int i = 0; i < GRAPH_WIDTH - 1; i++) {
+    display.drawLine(x + i, y + 40 - wave[i], x + i + 1, y + 40 - wave[i+1], AMBER);
+  }
+}
+
+// Random hardware "glitch" effect
+void applyAtmosphericGlitch() {
+  if (random(0, 1000) > 998) {
+    display.fillScreen(0x1082); // Flash faint dark-grey
+    delay(30);
+    display.fillScreen(BLACK);
+
+    // Repair the UI
+    drawScanlines(0, 0, display.width(), display.height());
+    drawUI();
+
+    // Reset tracking strings so the main loop is FORCED to redraw active data instantly
+    old_scram = ""; old_power = ""; old_magnet = "";
+    old_fwd = ""; old_bwd = ""; old_speed = "";
+    old_posSet = ""; old_posRead = "";
+    old_knob1 = ""; old_knob2 = "";
+    old_pkt1 = ""; old_pkt2 = ""; old_control = "";
+  }
+}
+
+// Optional graphical effect for bounding boxes
+void drawPulsingBorder(int x, int y, int w, int h) {
+  uint8_t brightness = (sin(millis() / 200.0) + 1) * 5; 
+  uint16_t pulseColor = display.color565(100 + (brightness * 10), 80, 20);
+  display.drawRect(x, y, w, h, pulseColor);
+}
 
 // Redraws the background scanlines in a specific box
-void drawScanlines(int startX, int startY, int width, int height) {
-  for (int y = startY; y < startY + height; y += 3) {
-    display.drawFastHLine(startX, y, width, DARK_AMBER);
+void drawScanlines(int x, int y, int w, int h) {
+  uint16_t scanlineColor = DARK_AMBER; 
+  for (int i = y; i < y + h; i += 2) {
+    display.drawFastHLine(x, i, w, scanlineColor);
   }
 }
 
 // Generic function to handle partial screen updates perfectly
 void updateField(int x, int y, int width, String newValue, String &oldValue) {
   if (newValue != oldValue) {
-    // 16 is the height for Text Size 2. If you change text size, increase this.
     display.fillRect(x, y, width, 16, BLACK);
     drawScanlines(x, y, width, 16);
     display.setCursor(x, y);
@@ -623,19 +635,15 @@ void updateField(int x, int y, int width, String newValue, String &oldValue) {
   }
 }
 
+// Initial Boot Sequence
 void bootupSequence() {
-  // 1. Clear the screen
   display.fillScreen(BLACK);
-  
-  // 2. Draw the scanlines first so they sit in the background
   drawScanlines(0, 0, display.width(), display.height());
-
-  // 3. Set up text rendering
+  
   display.setCursor(20, 20);
   display.setTextSize(2);
   display.setTextColor(AMBER);
 
-  // Simulated Boot Sequence
   display.println("HORSCO INDUSTRIES UNIFIED OPERATING SYSTEM");
   delay(500);
   display.println("COPYRIGHT 2075-2077");
@@ -651,7 +659,6 @@ void bootupSequence() {
   delay(400);
   display.print("CONNECTING ETHERNET: ");
   
-  // A quick little loading bar effect
   int barX = 20;
   int barY = 220;
   for(int i = 0; i <= 200; i += 20) {
@@ -660,56 +667,4 @@ void bootupSequence() {
   }
   display.println(" CONNECTED.");
   delay(500);
-  
-  // No need to clear screen here anymore, 
-  // just proceed to main loop setup.
-}
-// ======================== LIVE KEYBOARD INPUT DISPLAY ========================
-void updateKeyboardInputField() {
-  static String oldInput = "";
-  const int inputX = 20;
-  const int inputY = 300;        
-  // Reduce this from 700 to just slightly wider than your text needs
-  const int inputWidth = 400;    
-
-  if (currentInput != oldInput) {
-    display.fillRect(inputX, inputY, inputWidth, 20, BLACK);
-    drawScanlines(inputX, inputY, inputWidth, 20);
-
-    display.setCursor(inputX, inputY);
-    display.setTextSize(2);
-    display.setTextColor(AMBER);
-    display.print("CMD> ");
-    display.print(currentInput);
-    display.print("_");          
-
-    oldInput = currentInput;
-  }
-}
-
-// ======================== COMMAND PROCESSOR ========================
-void processCommand(String cmd) {
-
-  cmd.trim();
-  if (cmd.length() == 0) return;
-
-  if (cmd.equalsIgnoreCase("scram") || cmd.equalsIgnoreCase("s")) 
-    scramToggledState = !scramToggledState;
-  else if (cmd.equalsIgnoreCase("power") || cmd.equalsIgnoreCase("p")) 
-    powerToggledState = !powerToggledState;
-  else if (cmd.equalsIgnoreCase("magnet") || cmd.equalsIgnoreCase("m")) 
-    magnetToggledState = !magnetToggledState;
-  else if (cmd.equalsIgnoreCase("forward") || cmd.equalsIgnoreCase("f")) 
-    forwardToggledState = !forwardToggledState;
-  else if (cmd.equalsIgnoreCase("backward") || cmd.equalsIgnoreCase("b")) 
-    backwardToggledState = !backwardToggledState;
-  else if (cmd.equalsIgnoreCase("min") || cmd.equalsIgnoreCase("minpos")) 
-    posMinToggledState = !posMinToggledState;
-  else if (cmd.equalsIgnoreCase("max") || cmd.equalsIgnoreCase("maxpos")) 
-    posMaxToggledState = !posMaxToggledState;
-  else if (cmd.equalsIgnoreCase("speed") || cmd.equalsIgnoreCase("sp")) 
-    speedToggledState = !speedToggledState;
-  else if (cmd.startsWith("help")) {
-    Serial.println("Commands: scram(s), power(p), magnet(m), forward(f), backward(b), min, max, speed(sp)");
-  }
 }
