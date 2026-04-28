@@ -4,7 +4,14 @@
 #include <ArduinoJson.h>
 #include <mbed.h>
 #include <Arduino_GigaDisplay_GFX.h>
+#include <Adafruit_NeoPixel.h>
 
+// Define hardware pins and counts BEFORE using them
+#define LEDout 8
+#define NUMPIXELS 15 // Changed to all caps to match the rest of your code
+
+// Setup LED strip (Fixed typo: NEW_KHZ800 -> NEO_KHZ800 and PIN -> LEDout)
+Adafruit_NeoPixel pixels(NUMPIXELS, LEDout, NEO_GRB + NEO_KHZ800);
 // Display
 GigaDisplay_GFX display;
 
@@ -53,6 +60,7 @@ const uint8_t dirPin = 5;
 const uint8_t _dirPin = 7;
 const uint8_t motorInterfaceType = 1;
 const float stepsPerRevolution = 6400.0;
+
 
 // ======================== STATE VARIABLES ========================
 // Latched (toggled) states
@@ -117,6 +125,11 @@ void drawOscilloscope(int x, int y);
 void applyAtmosphericGlitch();
 
 void setup() {
+  //Starts code for the LED strip
+  pixels.begin();
+  pixels.setBrightness(100);
+
+
   // Fallout New Vegas color palette definition
   AMBER = display.color565(255, 182, 66);
   DARK_AMBER = display.color565(60, 40, 10);
@@ -185,6 +198,11 @@ void setup() {
 }
 
 void loop() {
+
+  pixels.fill(pixels.Color(0, 255, 0), 0, NUMPIXELS);
+
+  pixels.show();
+
   // ======================== 1. READ ALL PHYSICAL INPUTS ========================
   bool currentScramReading = digitalRead(scramPin);
   bool currentPowerReading = digitalRead(powerPin);
